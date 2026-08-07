@@ -1,0 +1,95 @@
+{
+  "name": "@stocksharp/grid",
+  "version": "0.1.0",
+  "description": "Browser data grid for StockSharp: column-driven table rendering, sorting, a column picker for server-rendered tables, and .xlsx export.",
+  "license": "SEE LICENSE IN LICENSE",
+  "author": {
+    "name": "StockSharp Platform LLC",
+    "url": "https://stocksharp.com/"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/StockSharp/Grids.git"
+  },
+  "homepage": "https://github.com/StockSharp/Grids#readme",
+  "bugs": {
+    "url": "https://github.com/StockSharp/Grids/issues"
+  },
+  "keywords": [
+    "stocksharp",
+    "grid",
+    "data-grid",
+    "table",
+    "sorting",
+    "columns",
+    "xlsx",
+    "export",
+    "typescript",
+    "dom"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/esm/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/types/index.d.ts",
+  "unpkg": "./dist/ssgrid.js",
+  "jsdelivr": "./dist/ssgrid.js",
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/esm/index.js"
+    },
+    "./data-grid": {
+      "types": "./dist/types/data-grid.d.ts",
+      "import": "./dist/esm/data-grid.js"
+    },
+    "./table-sort": {
+      "types": "./dist/types/table-sort.d.ts",
+      "import": "./dist/esm/table-sort.js"
+    },
+    "./column-settings": {
+      "types": "./dist/types/column-settings.d.ts",
+      "import": "./dist/esm/column-settings.js"
+    },
+    "./table-export": {
+      "types": "./dist/types/table-export.d.ts",
+      "import": "./dist/esm/table-export.js"
+    },
+    "./source": "./src/index.ts",
+    "./source/data-grid": "./src/data-grid.ts",
+    "./source/table-sort": "./src/table-sort.ts",
+    "./source/column-settings": "./src/column-settings.ts",
+    "./source/table-export": "./src/table-export.ts"
+  },
+  "files": [
+    "dist",
+    "src",
+    "LICENSE",
+    "NOTICE",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true,
+    "registry": "https://registry.npmjs.org/"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "prepack": "npm run build",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.test.json",
+    "api:check": "node tools/check-public-api.mjs",
+    "api:update": "node tools/check-public-api.mjs --update",
+    "build:tests": "node build-tests.mjs",
+    "test": "npm run typecheck && npm run api:check && npm run build:tests && node --test \"tests/_dist/**/*.test.cjs\"",
+    "pack:check": "npm pack --dry-run",
+    "release:check": "node tools/check-release-tag.mjs",
+    "release:patch": "npm version patch -m \"chore: release v%s\"",
+    "release:minor": "npm version minor -m \"chore: release v%s\"",
+    "release:major": "npm version major -m \"chore: release v%s\""
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.8.0"
+  }
+}
