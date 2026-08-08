@@ -5,7 +5,6 @@
 
     var SS = window.SSGrid;
     var DataGrid = SS.DataGrid;
-    var ColumnSettings = SS.ColumnSettings;
     var TableExport = SS.TableExport;
     var SortDirections = SS.SortDirections;
     var GridPinnedPlacements = SS.GridPinnedPlacements;
@@ -82,8 +81,8 @@
     // Declared once: the header cell, the body cell, the sort accessor and the
     // exported column all come from these objects.
     var COLUMNS = [
-        { key: 'id', header: 'ID', headerClass: 'num', exportable: true, value: function (o) { return o.id; }, cellClass: function () { return 'num dim'; } },
-        { key: 'time', header: 'Time', exportable: true, value: function (o) { return o.time; }, cellClass: function () { return 'num dim'; } },
+        { key: 'id', header: 'ID', headerClass: 'num', exportable: true, filter: 'number', value: function (o) { return o.id; }, cellClass: function () { return 'num dim'; } },
+        { key: 'time', header: 'Time', exportable: true, filter: 'text', value: function (o) { return o.time; }, cellClass: function () { return 'num dim'; } },
         { key: 'symbol', header: 'Symbol', exportable: true, filter: 'text', value: function (o) { return o.symbol; }, cellClass: function () { return 'sym'; } },
         { key: 'board', header: 'Board', exportable: true, filter: 'set', value: function (o) { return o.board; }, cellClass: function () { return 'dim'; } },
         {
@@ -93,15 +92,15 @@
             cellClass: function (o) { return o.side === 0 ? 'side-buy' : 'side-sell'; },
             exportValue: function (o) { return o.side === 0 ? 'Buy' : 'Sell'; }
         },
-        { key: 'type', header: 'Type', exportable: true, value: function (o) { return o.type; }, cellClass: function () { return 'dim'; } },
+        { key: 'type', header: 'Type', exportable: true, filter: 'set', value: function (o) { return o.type; }, cellClass: function () { return 'dim'; } },
         {
-            key: 'qty', header: 'Qty', headerClass: 'num', exportable: true,
+            key: 'qty', header: 'Qty', headerClass: 'num', exportable: true, filter: 'number',
             value: function (o) { return o.qty; },
             render: function (o) { return qtyText(o.qty); },
             cellClass: function () { return 'num'; }
         },
         {
-            key: 'price', header: 'Price', headerClass: 'num', exportable: true,
+            key: 'price', header: 'Price', headerClass: 'num', exportable: true, filter: 'number',
             value: function (o) { return o.price; },
             render: function (o) { return fixed(o.price, o.dec); },
             cellClass: function () { return 'num'; }
@@ -125,7 +124,7 @@
             cellClass: function (o) { return 'num ' + pnlClass(o.pnl); }
         },
         {
-            key: 'state', header: 'State', exportable: true,
+            key: 'state', header: 'State', exportable: true, filter: 'set',
             value: function (o) { return o.state; },
             // A Node, not a string: the cell holds a real element the host styles.
             render: function (o) {
@@ -263,51 +262,101 @@
         if (saved) grid.setState(saved);
     });
 
-    // --------------------------------------------------------- the column picker
-    // ColumnSettings attaches to a rendered table and reads its columns off the
-    // data-col keys in the header, so the host stamps them on the header the grid
-    // just built. The keys are the column keys, which is what the grid already
-    // writes on every body cell.
-    var headCells = options.head.querySelectorAll('th');
-    COLUMNS.forEach(function (col, i) { headCells[i].setAttribute('data-col', col.key); });
-
-    var modal = document.getElementById('colModal');
-    var layoutNote = document.getElementById('layout');
-    var storedLayout = null;              // this demo's store lives in memory
-
-    var settings = new ColumnSettings({
-        table: document.getElementById('blotter'),
-        dialog: {
-            list: document.getElementById('columnList'),
-            moveUpTitle: 'Move up',
-            moveDownTitle: 'Move down',
-            classes: {
-                item: 'col-item',
-                toggle: 'col-toggle',
-                label: 'col-label',
-                move: 'col-move',
-                moveUpIcon: 'ico ico-up',
-                moveDownIcon: 'ico ico-down'
-            },
-            open: function () { modal.classList.add('show'); },
-            close: function () { modal.classList.remove('show'); }
-        },
-        store: {
-            read: function () { return storedLayout; },
-            write: function (visible) {
-                // null means "this IS the table default" — the store keeps nothing.
-                storedLayout = visible;
-                layoutNote.textContent = 'layout: ';
-                var b = document.createElement('b');
-                b.textContent = visible ? visible.join(', ') : 'table default';
-                layoutNote.appendChild(b);
-            }
-        }
+    // ----------------------------------------------------------------- the theme
+    // The grid contributes no colour of its own -- everything on screen is this
+    // page's stylesheet -- so switching themes is a matter of swapping the tokens
+    // the page defines, and the grid never learns it happened.
+    document.getElementById('btnTheme').addEventListener('click', function () {
+        var light = document.documentElement.classList.toggle('light');
+        this.textContent = light ? '☾ Dark' : '☀ Light';
     });
 
-    document.getElementById('btnColumns').addEventListener('click', function () { settings.openPicker(); });
-    document.getElementById('colApply').addEventListener('click', function () { settings.applyPicked(); });
-    document.getElementById('colReset').addEventListener('click', function () { settings.resetToDefault(); });
+    // --------------------------------------------------------- the column picker
+    // Driven straight off the grid. ColumnSettings is for a table the SERVER rendered:
+    // it rearranges cells that already exist. Putting it over a DataGrid gives the
+    // column view two owners, and they disagree on the first repaint -- which is
+    // exactly what happened here, with a dragged column moving in the header while
+    // the body sprang back.
+    var modal = document.getElementById('colModal');
+    var layoutNote = document.getElementById('layout');
+    var listEl = document.getElementById('columnList');
+    var picked = [];                      // candidate order, uncommitted until Apply
+
+    function fillPicker() {
+        picked = grid.columnKeys().map(function (key) {
+            var col = COLUMNS.find(function (c) { return c.key === key; });
+            return { key: key, label: col.header || key, visible: !grid.isColumnHidden(key) };
+        });
+        drawPicker();
+    }
+
+    function drawPicker() {
+        listEl.replaceChildren.apply(listEl, picked.map(function (row, i) {
+            var li = document.createElement('li');
+            li.className = 'col-item';
+
+            var toggle = document.createElement('input');
+            toggle.type = 'checkbox';
+            toggle.className = 'col-toggle';
+            toggle.checked = row.visible;
+            toggle.addEventListener('change', function () { row.visible = toggle.checked; });
+
+            var label = document.createElement('span');
+            label.className = 'col-label';
+            label.textContent = row.label;
+
+            li.appendChild(toggle);
+            li.appendChild(label);
+            li.appendChild(moveButton(i, -1, 'Move up', 'ico ico-up'));
+            li.appendChild(moveButton(i, 1, 'Move down', 'ico ico-down'));
+            return li;
+        }));
+    }
+
+    function moveButton(index, delta, title, iconClass) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'col-move';
+        btn.title = title;
+        btn.disabled = index + delta < 0 || index + delta >= picked.length;
+        btn.appendChild(Object.assign(document.createElement('span'), { className: iconClass }));
+        btn.addEventListener('click', function () {
+            var row = picked.splice(index, 1)[0];
+            picked.splice(index + delta, 0, row);
+            drawPicker();
+        });
+        return btn;
+    }
+
+    function showLayout() {
+        var shown = grid.columnKeys().filter(function (k) { return !grid.isColumnHidden(k); });
+        var isDefault = shown.length === COLUMNS.length
+            && shown.every(function (k, i) { return k === COLUMNS[i].key; });
+        layoutNote.textContent = 'layout: ';
+        var b = document.createElement('b');
+        b.textContent = isDefault ? 'table default' : shown.join(', ');
+        layoutNote.appendChild(b);
+    }
+
+    document.getElementById('btnColumns').addEventListener('click', function () {
+        fillPicker();
+        modal.classList.add('show');
+    });
+
+    document.getElementById('colApply').addEventListener('click', function () {
+        grid.setColumnOrder(picked.map(function (r) { return r.key; }));
+        picked.forEach(function (r) { r.visible ? grid.showColumn(r.key) : grid.hideColumn(r.key); });
+        modal.classList.remove('show');
+        showLayout();
+    });
+
+    document.getElementById('colReset').addEventListener('click', function () {
+        grid.setColumnOrder(COLUMNS.map(function (c) { return c.key; }));
+        COLUMNS.forEach(function (c) { grid.showColumn(c.key); });
+        modal.classList.remove('show');
+        showLayout();
+    });
+
     document.getElementById('colClose').addEventListener('click', function () { modal.classList.remove('show'); });
     modal.addEventListener('click', function (e) {
         if (e.target === modal) modal.classList.remove('show');   // discard, nothing committed
@@ -319,10 +368,6 @@
     var sheetRows = document.getElementById('sheetRows');
 
     function afterRender() {
-        // A repaint builds fresh cells in declaration order, so the picked layout is
-        // re-applied over them — this is what afterRender() exists for.
-        if (settings) settings.apply(storedLayout || settings.defaultKeys());
-
         flashes.forEach(function (dir, key) {
             var td = grid.cellElement(key, 'last');
             if (td) td.classList.add(dir > 0 ? 'flash-up' : 'flash-down');

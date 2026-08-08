@@ -12,6 +12,15 @@
     --t-warn: #f0a742;
 }
 
+/* The whole theme is these tokens. Nothing below re-declares a colour, and the
+   grid declares none at all, so the switch is one class on <html>. */
+:root.light {
+    --t-bg: #f4f6f9; --t-panel: #ffffff; --t-header: #eef1f6;
+    --t-text: #1d2530; --t-text-dim: #5f6b7a; --t-text-bright: #000000;
+    --t-border: #d3d9e2; --t-accent: #1a6fd4; --t-up: #0b8f7f; --t-down: #cc3a37;
+    --t-warn: #b8720a;
+}
+
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
 body {

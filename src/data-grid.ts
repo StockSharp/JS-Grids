@@ -176,6 +176,8 @@ export interface GridMenuLabels {
     groupBy: string;
     ungroup: string;
     filterByValue: string;
+    showFilters: string;
+    hideFilters: string;
     clearFilters: string;
     copyCell: string;
     copyRow: string;
@@ -191,6 +193,8 @@ const MENU_LABELS: GridMenuLabels = {
     groupBy: 'Group by this column',
     ungroup: 'Ungroup',
     filterByValue: 'Filter by this value',
+    showFilters: 'Show filter row',
+    hideFilters: 'Hide filter row',
     clearFilters: 'Clear filters',
     copyCell: 'Copy cell',
     copyRow: 'Copy row',
@@ -231,6 +235,8 @@ export interface GridState {
     order?: string[];
     /** Column keys the user hid. They keep their place in `order` so unhiding restores the slot. */
     hidden?: string[];
+    /** Whether the filter row is on screen. Absent means the table's own default. */
+    filtersVisible?: boolean;
     sort?: SortSpec | null;
     /** By column key. Columns that are not filtered are absent rather than empty. */
     filters?: Record<string, GridFilter>;
@@ -288,6 +294,12 @@ export interface GridOptions<TRow> {
      */
     reorderable?: boolean;
     /**
+     * Whether the filter row starts on screen. It only exists at all once some column
+     * declares a filter; this decides whether it is shown, and the user can toggle it
+     * from the menu.
+     */
+    filtersVisible?: boolean;
+    /**
      * Whether clicking a row selects it, and whether more than one can be selected.
      * Defaults to 'none': a table that is read, not acted on, should not respond to
      * a click with a highlight nobody asked for.
@@ -328,6 +340,7 @@ export class DataGrid<TRow> {
     private _dragKey: string | null;
     private _filters: Record<string, GridFilter>;
     private _group: string | null;
+    private _filtersVisible: boolean;
     /// By row key, never by index or element: a repaint rebuilds every `<tr>`, and a
     /// filter takes rows off screen and brings them back.
     private _selected: Set<string>;
@@ -355,6 +368,7 @@ export class DataGrid<TRow> {
         this._hidden = new Set();
         this._dragKey = null;
         this._filters = {};
+        this._filtersVisible = options.filtersVisible !== false;
         this._group = null;
         this._collapsed = new Set();
         this._selected = new Set();
@@ -414,6 +428,17 @@ export class DataGrid<TRow> {
 
     showColumn(key: string): void {
         if (!this._hidden.delete(key)) return;
+        this._rerender();
+    }
+
+    filtersVisible(): boolean {
+        return this._filtersVisible;
+    }
+
+    /** Show or hide the filter row. The filters themselves are kept either way. */
+    showFilters(visible: boolean): void {
+        if (this._filtersVisible === visible) return;
+        this._filtersVisible = visible;
         this._rerender();
     }
 
@@ -516,10 +541,17 @@ export class DataGrid<TRow> {
             }
         }
 
-        items.push(
-            { label: labels.clearFilters, disabled: Object.keys(this._filters).length === 0, run: () => this.clearFilters() },
-            {},
-        );
+        if (this.options.columns.some(c => c.filter)) {
+            items.push(
+                {
+                    label: this._filtersVisible ? labels.hideFilters : labels.showFilters,
+                    checked: this._filtersVisible,
+                    run: () => this.showFilters(!this._filtersVisible),
+                },
+                { label: labels.clearFilters, disabled: Object.keys(this._filters).length === 0, run: () => this.clearFilters() },
+                {},
+            );
+        }
 
         if (col) {
             items.push({
@@ -699,6 +731,7 @@ export class DataGrid<TRow> {
             hidden: this._order.filter(key => this._hidden.has(key)),
             sort: this.sort.current(),
             filters: this.filters(),
+            filtersVisible: this._filtersVisible,
             group: this._group,
             collapsed: this.collapsedGroups(),
         };
@@ -718,6 +751,7 @@ export class DataGrid<TRow> {
                 if (state.sort) this.sort.set(state.sort.col, state.sort.dir);
                 else this.sort.set(null, null);
             }
+            if (state.filtersVisible !== undefined) this._filtersVisible = state.filtersVisible;
             if (state.group !== undefined) {
                 const col = state.group && this.options.columns.find(c => c.key === state.group);
                 this._group = col && col.value ? state.group! : null;
@@ -890,6 +924,10 @@ export class DataGrid<TRow> {
         for (const col of this.visibleColumns()) {
             const th = document.createElement('th');
             th.setAttribute('scope', 'col');
+            // The same key the body cells carry. Without it a right-click on the header
+            // resolves no column, so the menu loses everything about it -- and any host
+            // stamping the keys itself loses them on the next repaint.
+            th.dataset.col = col.key;
             if (col.headerClass) th.className = col.headerClass;
             // Sortable exactly when there is a value to sort by. TableSort binds to
             // the cells carrying `data-sort`, so a column without one is inert.
@@ -920,7 +958,7 @@ export class DataGrid<TRow> {
      */
     private _filterRow(): HTMLTableRowElement | null {
         const columns = this.visibleColumns();
-        if (!columns.some(col => col.filter)) return null;
+        if (!this._filtersVisible || !columns.some(col => col.filter)) return null;
 
         const tr = document.createElement('tr') as HTMLTableRowElement;
         tr.className = 'grid-filters';
@@ -1075,8 +1113,16 @@ export class DataGrid<TRow> {
             const selectedClass = this.options.selectedClass || 'is-selected';
             tr.className = tr.className ? `${tr.className} ${selectedClass}` : selectedClass;
         }
-        if ((this.options.selection || 'none') !== 'none')
+        if ((this.options.selection || 'none') !== 'none') {
+            // Shift-clicking rows is a range in this table and a text selection in the
+            // browser, and doing both at once leaves the page smeared in highlight.
+            // The gesture is claimed on mousedown, which is where the browser starts it.
+            tr.addEventListener('mousedown', (event: Event) => {
+                const m = event as unknown as { shiftKey?: boolean; ctrlKey?: boolean; metaKey?: boolean };
+                if (m.shiftKey || m.ctrlKey || m.metaKey) event.preventDefault();
+            });
             tr.addEventListener('click', (event: Event) => this._clickRow(key, event));
+        }
 
         if (this.options.bindRow) this.options.bindRow(tr, row);
         this._rowEls.set(key, tr);

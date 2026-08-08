@@ -256,6 +256,8 @@ export interface GridMenuLabels {
     groupBy: string;
     ungroup: string;
     filterByValue: string;
+    showFilters: string;
+    hideFilters: string;
     clearFilters: string;
     copyCell: string;
     copyRow: string;
@@ -293,6 +295,8 @@ export interface GridState {
     order?: string[];
     /** Column keys the user hid. They keep their place in `order` so unhiding restores the slot. */
     hidden?: string[];
+    /** Whether the filter row is on screen. Absent means the table's own default. */
+    filtersVisible?: boolean;
     sort?: SortSpec | null;
     /** By column key. Columns that are not filtered are absent rather than empty. */
     filters?: Record<string, GridFilter>;
@@ -349,6 +353,12 @@ export interface GridOptions<TRow> {
      */
     reorderable?: boolean;
     /**
+     * Whether the filter row starts on screen. It only exists at all once some column
+     * declares a filter; this decides whether it is shown, and the user can toggle it
+     * from the menu.
+     */
+    filtersVisible?: boolean;
+    /**
      * Whether clicking a row selects it, and whether more than one can be selected.
      * Defaults to 'none': a table that is read, not acted on, should not respond to
      * a click with a highlight nobody asked for.
@@ -389,6 +399,9 @@ export declare class DataGrid<TRow> {
     setColumnOrder(keys: string[]): void;
     hideColumn(key: string): void;
     showColumn(key: string): void;
+    filtersVisible(): boolean;
+    /** Show or hide the filter row. The filters themselves are kept either way. */
+    showFilters(visible: boolean): void;
     /** The filters in effect, by column key. Columns with none are absent. */
     filters(): Record<string, GridFilter>;
     /**

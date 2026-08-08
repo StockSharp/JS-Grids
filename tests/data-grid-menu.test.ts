@@ -119,19 +119,21 @@ describe('DataGrid context menu', () => {
         rightClick(body, 0, 1);
         const menu = openMenu()!;
         const disabled = menu.children.filter(el => el.className.includes('is-disabled')).map(el => el.textContent);
-        // No sort is set and nothing is hidden or filtered yet.
-        assert.deepEqual(disabled.sort(), ['Clear filters', 'Clear sort', 'Show all columns']);
+        // No sort is set and nothing is hidden. No column here declares a filter, so
+        // the filter lines are absent rather than present and dimmed -- a table that
+        // cannot be filtered should not carry the vocabulary of filtering.
+        assert.deepEqual(disabled.sort(), ['Clear sort', 'Show all columns']);
 
         // A dimmed line does nothing when clicked.
-        const clear = menu.children.find(el => el.textContent === 'Clear filters')!;
+        const clear = menu.children.find(el => el.textContent === 'Clear sort')!;
         clear.dispatchEvent({ type: 'click', target: clear });
         assert.equal(openMenu(), menu, 'a disabled item should not even close the menu');
 
-        grid.setFilter('symbol', { text: 'a' });
+        grid.sort.set('symbol', 'asc');
         fireOnDocument({ type: 'mousedown' });
         rightClick(body, 0, 1);
         const now = openMenu()!.children.filter(el => el.className.includes('is-disabled')).map(el => el.textContent);
-        assert.ok(!now.includes('Clear filters'));
+        assert.ok(!now.includes('Clear sort'));
     });
 
     it('will not let the last column be hidden', () => {

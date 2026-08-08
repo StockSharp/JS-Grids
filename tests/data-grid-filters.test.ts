@@ -195,4 +195,22 @@ describe('DataGrid filters', () => {
         assert.deepEqual(select.children.map(o => o.value), ['', 'Buy', 'Sell']);
         assert.deepEqual(select.children.map(o => o.textContent), ['', 'Buy', 'Sell']);
     });
+
+    it('hides the filter row without forgetting the filters', () => {
+        const { grid, head, body } = makeGrid();
+
+        grid.setFilter('symbol', { text: 'aapl' });
+        grid.showFilters(false);
+
+        // The row is gone but the rows stay filtered: hiding the controls is about
+        // screen space, not about undoing what the user asked for.
+        assert.equal(head.children.length, 1);
+        assert.deepEqual(shownIds(body), ['1', '3']);
+        assert.equal(grid.filtersVisible(), false);
+        assert.equal(grid.getState().filtersVisible, false);
+
+        grid.showFilters(true);
+        assert.equal(head.children.length, 2);
+        assert.equal(head.children[1].children[1].children[0].value, 'aapl');
+    });
 });
