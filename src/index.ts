@@ -26,3 +26,7 @@ export type {
 // to write it from (a server-rendered list, a chart's underlying series) can reach
 // it on its own rather than reimplementing a workbook writer.
 export { TableExport } from './table-export.js';
+
+/// The menu the grid offers on a right-click. Exported so a host that supplies its
+/// own items can still reuse the chrome, or open one from a button of its own.
+export { GridContextMenu, type GridMenuClasses, type GridMenuItem } from './context-menu.js';

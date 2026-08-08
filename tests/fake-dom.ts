@@ -22,6 +22,10 @@ export interface FakeEvent {
     /// Drag handling calls it to accept a drop; a test that wants to assert the
     /// call passes its own spy, and one that does not can leave it out.
     preventDefault?(): void;
+    /// Selection reads these to tell a plain click from an add or a range.
+    ctrlKey?: boolean;
+    metaKey?: boolean;
+    shiftKey?: boolean;
 }
 
 type FakeListener = (event: FakeEvent) => void;
@@ -178,6 +182,16 @@ export class FakeElement {
         return node;
     }
 
+    /// The context menu takes itself back out of the body when it closes.
+    removeChild<T extends FakeNode>(node: T): T {
+        const at = this.childNodes.indexOf(node);
+        if (at >= 0) {
+            this.childNodes.splice(at, 1);
+            (node as { parentNode: FakeElement | null }).parentNode = null;
+        }
+        return node;
+    }
+
     replaceChildren(...nodes: FakeNode[]): void {
         this.childNodes = [];
         for (const node of nodes) this.appendChild(node);
@@ -249,19 +263,51 @@ export class FakeTable {
     }
 }
 
+/// Listeners the context menu binds on the document and the window to dismiss
+/// itself. Kept addressable so a test can fire one instead of waiting for a user.
+const documentListeners = new Map<string, FakeListener[]>();
+const windowListeners = new Map<string, FakeListener[]>();
+
+function bind(store: Map<string, FakeListener[]>, type: string, handler: FakeListener): void {
+    const list = store.get(type);
+    if (list) list.push(handler);
+    else store.set(type, [handler]);
+}
+
+function unbind(store: Map<string, FakeListener[]>, type: string, handler: FakeListener): void {
+    const list = store.get(type);
+    if (!list) return;
+    const at = list.indexOf(handler);
+    if (at >= 0) list.splice(at, 1);
+}
+
 export const fakeDocument = {
     createElement: (tag: string): FakeElement => new FakeElement(tag),
     createTextNode: (text: string): FakeText => new FakeText(text),
     createDocumentFragment: (): FakeFragment => new FakeFragment(),
-    /// The export parks its anchor here for the click; nothing else in the library
-    /// reaches for the document body.
+    /// The export parks its anchor here for the click, and an open menu lives here.
     body: new FakeElement('body'),
+    addEventListener: (type: string, handler: FakeListener): void => bind(documentListeners, type, handler),
+    removeEventListener: (type: string, handler: FakeListener): void => unbind(documentListeners, type, handler),
 };
+
+export const fakeWindow = {
+    innerWidth: 1024,
+    innerHeight: 768,
+    addEventListener: (type: string, handler: FakeListener): void => bind(windowListeners, type, handler),
+    removeEventListener: (type: string, handler: FakeListener): void => unbind(windowListeners, type, handler),
+};
+
+/// Fire what the page would fire: a click somewhere else, an Escape, a scroll.
+export function fireOnDocument(event: FakeEvent): void {
+    for (const handler of [...(documentListeners.get(event.type) || [])]) handler(event);
+}
 
 /// Publish the fake as the global `document`. The library reaches for the global
 /// exactly as it does in a browser; nothing is injected for the sake of testing.
 export function installFakeDocument(): void {
     (globalThis as unknown as { document: unknown }).document = fakeDocument;
+    (globalThis as unknown as { window: unknown }).window = fakeWindow;
 }
 
 /// The fakes are structural stand-ins carrying the members the library touches,

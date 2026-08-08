@@ -83,8 +83,53 @@ export declare class ColumnSettings {
     resetToDefault(): void;
 }
 
+// FILE: context-menu.d.ts
+/** One line in the menu. A separator is an item with no label. */
+export interface GridMenuItem {
+    /** Shown to the user. Omit for a separator. */
+    label?: string;
+    /** What the line does. A separator and a disabled line have none. */
+    run?(): void;
+    /** Drawn, but inert and dimmed -- so an action stays where the user expects it. */
+    disabled?: boolean;
+    /** Marks the line as ticked, for the toggles (a hidden column, a set filter). */
+    checked?: boolean;
+}
+/** Class names for the menu's parts. The grid names elements; a host styles them. */
+export interface GridMenuClasses {
+    menu?: string;
+    item?: string;
+    separator?: string;
+    disabled?: string;
+    checked?: string;
+}
+/**
+ * Shows one menu at a time for the whole page.
+ *
+ * One instance rather than one per grid: two menus open at once is never what a
+ * user asked for, and a second grid opening its own would leave the first hanging
+ * with no way back to it.
+ */
+export declare class GridContextMenu {
+    constructor(classes?: GridMenuClasses);
+    /** Whether this menu is the one currently on screen. */
+    get isOpen(): boolean;
+    /**
+     * Draw the items at (x, y) in viewport coordinates. Opening a menu closes
+     * whichever one was open, including this one -- a right-click inside an open
+     * menu means "somewhere else", not "two menus".
+     */
+    open(items: GridMenuItem[], x: number, y: number): void;
+    close(): void;
+    /**
+     * Nudge the menu back inside the window when it was opened near an edge.
+     * Measured after it is in the document, because until then it has no size.
+     */
+}
+
 // FILE: data-grid.d.ts
 import { TableSort, type SortSpec } from './table-sort.js';
+import { type GridMenuClasses, type GridMenuItem } from './context-menu.js';
 /** Where a pinned row sits relative to the sorted body rows. */
 export declare const GridPinnedPlacements: {
     readonly Top: "top";
@@ -180,6 +225,44 @@ export interface GridExportData {
  * a substring box, a min/max pair, or a list of the values present.
  */
 export type GridFilterKind = 'text' | 'number' | 'set';
+/** Where a right-click landed, handed to whoever builds the menu for it. */
+export interface GridMenuContext<TRow> {
+    /** The column under the pointer, or null when the click missed the cells. */
+    column: GridColumn<TRow> | null;
+    /** The row under the pointer, or null on a header, a group row or empty space. */
+    row: TRow | null;
+    /** The value of that row in that column, already rendered as text. */
+    text: string;
+}
+/** How the grid's own menu is set up, and how a host takes it over. */
+export interface GridMenuOptions<TRow> {
+    classes?: GridMenuClasses;
+    /**
+     * The final say on what the menu contains. Gets the grid's own items and may
+     * return them, add to them, or ignore them entirely; returning an empty array
+     * suppresses the menu for that click.
+     */
+    items?(context: GridMenuContext<TRow>, defaults: GridMenuItem[]): GridMenuItem[];
+    /** Wording, for a host that is not in English. */
+    labels?: Partial<GridMenuLabels>;
+}
+/** Every phrase the built-in menu can show. */
+export interface GridMenuLabels {
+    sortAsc: string;
+    sortDesc: string;
+    sortClear: string;
+    hideColumn: string;
+    showAllColumns: string;
+    groupBy: string;
+    ungroup: string;
+    filterByValue: string;
+    clearFilters: string;
+    copyCell: string;
+    copyRow: string;
+    exportXlsx: string;
+}
+/** How many rows a user may have selected at once. */
+export type GridSelectionMode = 'none' | 'single' | 'multi';
 /**
  * One column's filter. Plain data rather than a predicate, and deliberately so:
  * a closure cannot be written to a store, so a grid filtered by one could never
@@ -213,6 +296,10 @@ export interface GridState {
     sort?: SortSpec | null;
     /** By column key. Columns that are not filtered are absent rather than empty. */
     filters?: Record<string, GridFilter>;
+    /** Column key the rows are grouped under, or null for a flat table. */
+    group?: string | null;
+    /** Group values the user collapsed. */
+    collapsed?: string[];
 }
 export interface GridOptions<TRow> {
     /** The `<thead>` the grid renders the header row into. Emptied on construction. */
@@ -262,6 +349,23 @@ export interface GridOptions<TRow> {
      */
     reorderable?: boolean;
     /**
+     * Whether clicking a row selects it, and whether more than one can be selected.
+     * Defaults to 'none': a table that is read, not acted on, should not respond to
+     * a click with a highlight nobody asked for.
+     */
+    selection?: GridSelectionMode;
+    /**
+     * Class put on a selected row. The grid names elements but decides nothing about
+     * how they look, so the host supplies the name its stylesheet defines.
+     */
+    selectedClass?: string;
+    onSelectionChange?(keys: string[]): void;
+    /**
+     * Offer a context menu on right-click. `true` takes the grid's own; an object
+     * keeps it and lets the host restyle, reword or rewrite the items.
+     */
+    contextMenu?: boolean | GridMenuOptions<TRow>;
+    /**
      * Called whenever the user changes the arrangement -- moved a column, hid one,
      * sorted. This is where a host persists it; `setState` deliberately does not
      * fire it, or restoring a layout would write it straight back on every load.
@@ -296,6 +400,23 @@ export declare class DataGrid<TRow> {
     clearFilters(): void;
     /** The held rows that pass every filter, in the order they were handed over. */
     filteredRows(): TRow[];
+    /**
+     * The items the grid offers for a right-click. Public so a host that replaces
+     * the menu can still reach for the parts of it that it wants to keep.
+     */
+    menuItems(context: GridMenuContext<TRow>): GridMenuItem[];
+    /** Selected row keys, in the order they appear on screen. */
+    selectedKeys(): string[];
+    /** The selected rows that are actually on screen. */
+    selectedRows(): TRow[];
+    setSelection(keys: string[]): void;
+    clearSelection(): void;
+    /** The column the rows are grouped under, or null. */
+    groupedBy(): string | null;
+    /** Group by a column, or pass null to go flat. */
+    groupBy(key: string | null): void;
+    collapsedGroups(): string[];
+    toggleGroup(value: string): void;
     /** The arrangement, as a host would store it. */
     getState(): GridState;
     /**
@@ -314,6 +435,13 @@ export declare class DataGrid<TRow> {
      * default). A sorted copy — the held array is never reordered.
      */
     sortedRows(): TRow[];
+    /**
+     * Every row that is on screen, in the order it appears there -- filtered, sorted,
+     * and gathered into groups when grouping is on. Collapsed groups are included:
+     * they are hidden, not excluded, and an export of a collapsed table that silently
+     * dropped rows would be worse than one that shows them.
+     */
+    displayRows(): TRow[];
     setRows(rows: TRow[]): void;
     render(): void;
     /**
@@ -363,6 +491,7 @@ export type { SortDir, SortSpec } from './table-sort.js';
 export { ColumnSettings } from './column-settings.js';
 export type { ColumnLayoutStore, ColumnPickerClasses, ColumnSettingsDialog, ColumnSettingsOptions, } from './column-settings.js';
 export { TableExport } from './table-export.js';
+export { GridContextMenu, type GridMenuClasses, type GridMenuItem } from './context-menu.js';
 
 // FILE: table-export.d.ts
 export declare const TableExport: {

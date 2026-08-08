@@ -29,6 +29,7 @@
 // TableSort). The first is ours; the other two are spelled the way Bootstrap
 // spells them, which is a coupling worth knowing about before adopting.
 import { TableSort, type SortSpec } from './table-sort.js';
+import { GridContextMenu, type GridMenuClasses, type GridMenuItem } from './context-menu.js';
 import { TableExport } from './table-export.js';
 
 /** Where a pinned row sits relative to the sorted body rows. */
@@ -142,6 +143,63 @@ export interface GridExportData {
  */
 export type GridFilterKind = 'text' | 'number' | 'set';
 
+/** Where a right-click landed, handed to whoever builds the menu for it. */
+export interface GridMenuContext<TRow> {
+    /** The column under the pointer, or null when the click missed the cells. */
+    column: GridColumn<TRow> | null;
+    /** The row under the pointer, or null on a header, a group row or empty space. */
+    row: TRow | null;
+    /** The value of that row in that column, already rendered as text. */
+    text: string;
+}
+
+/** How the grid's own menu is set up, and how a host takes it over. */
+export interface GridMenuOptions<TRow> {
+    classes?: GridMenuClasses;
+    /**
+     * The final say on what the menu contains. Gets the grid's own items and may
+     * return them, add to them, or ignore them entirely; returning an empty array
+     * suppresses the menu for that click.
+     */
+    items?(context: GridMenuContext<TRow>, defaults: GridMenuItem[]): GridMenuItem[];
+    /** Wording, for a host that is not in English. */
+    labels?: Partial<GridMenuLabels>;
+}
+
+/** Every phrase the built-in menu can show. */
+export interface GridMenuLabels {
+    sortAsc: string;
+    sortDesc: string;
+    sortClear: string;
+    hideColumn: string;
+    showAllColumns: string;
+    groupBy: string;
+    ungroup: string;
+    filterByValue: string;
+    clearFilters: string;
+    copyCell: string;
+    copyRow: string;
+    exportXlsx: string;
+}
+
+const MENU_LABELS: GridMenuLabels = {
+    sortAsc: 'Sort ascending',
+    sortDesc: 'Sort descending',
+    sortClear: 'Clear sort',
+    hideColumn: 'Hide column',
+    showAllColumns: 'Show all columns',
+    groupBy: 'Group by this column',
+    ungroup: 'Ungroup',
+    filterByValue: 'Filter by this value',
+    clearFilters: 'Clear filters',
+    copyCell: 'Copy cell',
+    copyRow: 'Copy row',
+    exportXlsx: 'Export to .xlsx',
+};
+
+/** How many rows a user may have selected at once. */
+export type GridSelectionMode = 'none' | 'single' | 'multi';
+
 /**
  * One column's filter. Plain data rather than a predicate, and deliberately so:
  * a closure cannot be written to a store, so a grid filtered by one could never
@@ -176,6 +234,10 @@ export interface GridState {
     sort?: SortSpec | null;
     /** By column key. Columns that are not filtered are absent rather than empty. */
     filters?: Record<string, GridFilter>;
+    /** Column key the rows are grouped under, or null for a flat table. */
+    group?: string | null;
+    /** Group values the user collapsed. */
+    collapsed?: string[];
 }
 
 export interface GridOptions<TRow> {
@@ -226,6 +288,23 @@ export interface GridOptions<TRow> {
      */
     reorderable?: boolean;
     /**
+     * Whether clicking a row selects it, and whether more than one can be selected.
+     * Defaults to 'none': a table that is read, not acted on, should not respond to
+     * a click with a highlight nobody asked for.
+     */
+    selection?: GridSelectionMode;
+    /**
+     * Class put on a selected row. The grid names elements but decides nothing about
+     * how they look, so the host supplies the name its stylesheet defines.
+     */
+    selectedClass?: string;
+    onSelectionChange?(keys: string[]): void;
+    /**
+     * Offer a context menu on right-click. `true` takes the grid's own; an object
+     * keeps it and lets the host restyle, reword or rewrite the items.
+     */
+    contextMenu?: boolean | GridMenuOptions<TRow>;
+    /**
      * Called whenever the user changes the arrangement -- moved a column, hid one,
      * sorted. This is where a host persists it; `setState` deliberately does not
      * fire it, or restoring a layout would write it straight back on every load.
@@ -248,6 +327,14 @@ export class DataGrid<TRow> {
     /// should do nothing, and reading it back out of the event would invite it.
     private _dragKey: string | null;
     private _filters: Record<string, GridFilter>;
+    private _group: string | null;
+    /// By row key, never by index or element: a repaint rebuilds every `<tr>`, and a
+    /// filter takes rows off screen and brings them back.
+    private _selected: Set<string>;
+    /// Where a shift-click measures its range from.
+    private _anchorKey: string | null;
+    private _menu: GridContextMenu | null;
+    private _collapsed: Set<string>;
     /// The rendered filter controls, by column key, so a stored filter can be put
     /// back into them without rebuilding the row under the user's cursor.
     private _filterEls: Map<string, HTMLElement[]>;
@@ -268,6 +355,11 @@ export class DataGrid<TRow> {
         this._hidden = new Set();
         this._dragKey = null;
         this._filters = {};
+        this._group = null;
+        this._collapsed = new Set();
+        this._selected = new Set();
+        this._anchorKey = null;
+        this._menu = null;
         this._filterEls = new Map();
         this._restoring = false;
 
@@ -282,6 +374,7 @@ export class DataGrid<TRow> {
         this._renderHead();
         this.sort = new TableSort<TRow>(options.head, accessors, () => this.render(), options.defaultSort);
         this._paint();
+        if (options.contextMenu) this._bindContextMenu();
     }
 
     /** Every declared column in display order, hidden ones included. */
@@ -394,6 +487,211 @@ export class DataGrid<TRow> {
         return true;
     }
 
+    /**
+     * The items the grid offers for a right-click. Public so a host that replaces
+     * the menu can still reach for the parts of it that it wants to keep.
+     */
+    menuItems(context: GridMenuContext<TRow>): GridMenuItem[] {
+        const labels = { ...MENU_LABELS, ...(this._menuOptions().labels || {}) };
+        const items: GridMenuItem[] = [];
+        const col = context.column;
+
+        if (col && col.value) {
+            const sort = this.sort.current();
+            items.push(
+                { label: labels.sortAsc, checked: sort?.col === col.key && sort.dir === 'asc', run: () => this.sort.set(col.key, 'asc') },
+                { label: labels.sortDesc, checked: sort?.col === col.key && sort.dir === 'desc', run: () => this.sort.set(col.key, 'desc') },
+                { label: labels.sortClear, disabled: !sort, run: () => this.sort.set(null, null) },
+                {},
+                this._group === col.key
+                    ? { label: labels.ungroup, run: () => this.groupBy(null) }
+                    : { label: labels.groupBy, run: () => this.groupBy(col.key) },
+            );
+
+            if (context.row !== null) {
+                items.push({
+                    label: `${labels.filterByValue}: ${context.text}`,
+                    run: () => this.setFilter(col.key, { values: [context.text] }),
+                });
+            }
+        }
+
+        items.push(
+            { label: labels.clearFilters, disabled: Object.keys(this._filters).length === 0, run: () => this.clearFilters() },
+            {},
+        );
+
+        if (col) {
+            items.push({
+                label: labels.hideColumn,
+                // The last visible column cannot go: a table with no columns is a
+                // blank rectangle with no way back to itself.
+                disabled: this.visibleColumns().length <= 1,
+                run: () => this.hideColumn(col.key),
+            });
+        }
+        items.push({
+            label: labels.showAllColumns,
+            disabled: this._hidden.size === 0,
+            run: () => { for (const key of [...this._hidden]) this.showColumn(key); },
+        });
+
+        if (context.row !== null) {
+            items.push(
+                {},
+                { label: labels.copyCell, run: () => DataGrid._copy(context.text) },
+                { label: labels.copyRow, run: () => DataGrid._copy(this._rowText(context.row!)) },
+            );
+        }
+
+        items.push({}, { label: labels.exportXlsx, run: () => this.download('export', 'Export') });
+        return items;
+    }
+
+    private _menuOptions(): GridMenuOptions<TRow> {
+        const option = this.options.contextMenu;
+        return typeof option === 'object' && option !== null ? option : {};
+    }
+
+    private _bindContextMenu(): void {
+        this._menu = new GridContextMenu(this._menuOptions().classes);
+
+        const onContext = (event: Event) => {
+            const target = (event as unknown as { target?: Element }).target;
+            const cell = target && typeof target.closest === 'function'
+                ? target.closest('[data-col]') as HTMLElement | null
+                : null;
+            const rowEl = target && typeof target.closest === 'function'
+                ? target.closest('[data-row-key]') as HTMLElement | null
+                : null;
+
+            const column = cell ? this.options.columns.find(c => c.key === cell.dataset.col) || null : null;
+            const rowKey = rowEl?.dataset.rowKey;
+            const row = rowKey === undefined ? null
+                : this.displayRows().find(r => this.options.rowKey(r) === rowKey) || null;
+            const text = column && row && column.value ? DataGrid._text(column.value(row)) : '';
+
+            const context: GridMenuContext<TRow> = { column, row, text };
+            const build = this._menuOptions().items;
+            const items = build ? build(context, this.menuItems(context)) : this.menuItems(context);
+            if (items.length === 0) return;
+
+            event.preventDefault();
+            const at = event as unknown as { clientX?: number; clientY?: number };
+            this._menu!.open(items, at.clientX || 0, at.clientY || 0);
+        };
+
+        this.options.head.addEventListener('contextmenu', onContext);
+        this.options.body.addEventListener('contextmenu', onContext);
+    }
+
+    private _rowText(row: TRow): string {
+        return this.visibleColumns()
+            .map(col => (col.value ? DataGrid._text(col.value(row)) : ''))
+            .join('	');
+    }
+
+    /// Clipboard writes are best-effort: the API is unavailable over plain http and
+    /// rejects when the document is not focused, and a copy that failed is not worth
+    /// taking the page down over.
+    private static _copy(text: string): void {
+        const clipboard = typeof navigator !== 'undefined' ? navigator.clipboard : undefined;
+        clipboard?.writeText(text).catch(() => {});
+    }
+
+    /** Selected row keys, in the order they appear on screen. */
+    selectedKeys(): string[] {
+        const onScreen = this.displayRows().map(row => this.options.rowKey(row));
+        const known = new Set(onScreen);
+        // Keys of rows a filter is currently hiding keep their selection but have no
+        // place in the on-screen order, so they follow at the end rather than vanish.
+        return [...onScreen.filter(key => this._selected.has(key)),
+            ...[...this._selected].filter(key => !known.has(key))];
+    }
+
+    /** The selected rows that are actually on screen. */
+    selectedRows(): TRow[] {
+        return this.displayRows().filter(row => this._selected.has(this.options.rowKey(row)));
+    }
+
+    setSelection(keys: string[]): void {
+        this._replaceSelection(new Set(keys));
+    }
+
+    clearSelection(): void {
+        this._replaceSelection(new Set());
+    }
+
+    private _replaceSelection(next: Set<string>): void {
+        const before = this.selectedKeys();
+        this._selected = next;
+        const after = this.selectedKeys();
+        if (before.length === after.length && before.every((key, i) => key === after[i])) return;
+        this.render();
+        if (this.options.onSelectionChange) this.options.onSelectionChange(after);
+    }
+
+    private _clickRow(key: string, event: Event): void {
+        const mode = this.options.selection || 'none';
+        if (mode === 'none') return;
+
+        const modifiers = event as unknown as { ctrlKey?: boolean; metaKey?: boolean; shiftKey?: boolean };
+        const next = new Set<string>();
+
+        if (mode === 'single' || (!modifiers.ctrlKey && !modifiers.metaKey && !modifiers.shiftKey)) {
+            next.add(key);
+            this._anchorKey = key;
+        } else if (modifiers.shiftKey && this._anchorKey !== null) {
+            // The range is what the user sees between the two rows, so it is measured
+            // against the order on screen -- sorted, filtered, grouped -- not the order
+            // the rows were handed over in.
+            const order = this.displayRows().map(row => this.options.rowKey(row));
+            const from = order.indexOf(this._anchorKey);
+            const to = order.indexOf(key);
+            if (from === -1 || to === -1) next.add(key);
+            else for (const k of order.slice(Math.min(from, to), Math.max(from, to) + 1)) next.add(k);
+        } else {
+            for (const k of this._selected) next.add(k);
+            if (!next.delete(key)) next.add(key);
+            this._anchorKey = key;
+        }
+
+        this._replaceSelection(next);
+    }
+
+    /** The column the rows are grouped under, or null. */
+    groupedBy(): string | null {
+        return this._group;
+    }
+
+    /** Group by a column, or pass null to go flat. */
+    groupBy(key: string | null): void {
+        if (key !== null) {
+            const col = this.options.columns.find(c => c.key === key);
+            if (!col || !col.value) throw new Error(`DataGrid: no column "${key}" with a value to group by`);
+        }
+        this._group = key;
+        // Collapse is remembered per group value, and the values belong to the column
+        // that produced them -- keeping them across a regroup would collapse whatever
+        // happened to share a name.
+        this._collapsed.clear();
+        this._afterViewChange();
+    }
+
+    collapsedGroups(): string[] {
+        return [...this._collapsed];
+    }
+
+    toggleGroup(value: string): void {
+        if (!this._collapsed.delete(value)) this._collapsed.add(value);
+        this._afterViewChange();
+    }
+
+    private _afterViewChange(): void {
+        this.render();
+        if (!this._restoring && this.options.onStateChange) this.options.onStateChange(this.getState());
+    }
+
     /** The arrangement, as a host would store it. */
     getState(): GridState {
         return {
@@ -401,6 +699,8 @@ export class DataGrid<TRow> {
             hidden: this._order.filter(key => this._hidden.has(key)),
             sort: this.sort.current(),
             filters: this.filters(),
+            group: this._group,
+            collapsed: this.collapsedGroups(),
         };
     }
 
@@ -418,6 +718,12 @@ export class DataGrid<TRow> {
                 if (state.sort) this.sort.set(state.sort.col, state.sort.dir);
                 else this.sort.set(null, null);
             }
+            if (state.group !== undefined) {
+                const col = state.group && this.options.columns.find(c => c.key === state.group);
+                this._group = col && col.value ? state.group! : null;
+                this._collapsed.clear();
+            }
+            if (state.collapsed) this._collapsed = new Set(state.collapsed);
             if (state.filters) {
                 this._filters = {};
                 for (const [key, filter] of Object.entries(state.filters)) {
@@ -463,6 +769,18 @@ export class DataGrid<TRow> {
         return this.sort.apply(this.filteredRows());
     }
 
+    /**
+     * Every row that is on screen, in the order it appears there -- filtered, sorted,
+     * and gathered into groups when grouping is on. Collapsed groups are included:
+     * they are hidden, not excluded, and an export of a collapsed table that silently
+     * dropped rows would be worse than one that shows them.
+     */
+    displayRows(): TRow[] {
+        const sorted = this.sortedRows();
+        if (this._group === null) return sorted;
+        return [...this._groups(sorted).values()].flat();
+    }
+
     setRows(rows: TRow[]): void {
         this._rows = rows || [];
         this.render();
@@ -483,16 +801,42 @@ export class DataGrid<TRow> {
 
         const pinned = this.options.pinnedRows ? this.options.pinnedRows() : [];
         const sorted = this.sortedRows();
-        const painted = this.options.renderLimit != null ? sorted.slice(0, this.options.renderLimit) : sorted;
+        const limit = this.options.renderLimit != null ? this.options.renderLimit : Infinity;
 
         const children: Node[] = [];
         for (const row of pinned) {
             if (row.place === GridPinnedPlacements.Top) children.push(this._pinnedRow(row));
         }
+
+        let painted = 0;
+        if (this._group === null) {
+            for (const row of sorted) {
+                if (painted >= limit) break;
+                children.push(this._bodyRow(row));
+                painted++;
+            }
+        } else {
+            // Groups run in value order while the rows inside each keep the sort the
+            // user picked -- sorting by quantity inside "AAPL" should not shuffle
+            // "AAPL" itself against "BTC".
+            for (const [value, rows] of this._groups(sorted)) {
+                if (painted >= limit) break;
+                children.push(this._groupRow(value, rows.length));
+                if (this._collapsed.has(value)) continue;
+                for (const row of rows) {
+                    // The limit counts rows of data: a group header is a label for the
+                    // rows under it, and capping on it would cut a group off at its own title.
+                    if (painted >= limit) break;
+                    children.push(this._bodyRow(row));
+                    painted++;
+                }
+            }
+        }
+
         // A pinned row is content, so a table showing only a balance summary is not
         // empty — the "nothing here" row would read as a contradiction next to it.
-        if (painted.length === 0 && pinned.length === 0) children.push(this._emptyRow());
-        for (const row of painted) children.push(this._bodyRow(row));
+        if (painted === 0 && pinned.length === 0 && this._collapsed.size === 0) children.push(this._emptyRow());
+
         for (const row of pinned) {
             if (row.place === GridPinnedPlacements.Bottom) children.push(this._pinnedRow(row));
         }
@@ -525,7 +869,10 @@ export class DataGrid<TRow> {
         const columns = this.visibleColumns().filter(col => col.exportable);
         return {
             headers: columns.map(col => col.header),
-            rows: this.sortedRows().map(row => columns.map(col => {
+            // Grouped, the sheet follows the order on screen but without the header
+            // rows: a spreadsheet has its own grouping, and a label row in the middle
+            // of the data would break every formula pointed at the range.
+            rows: this.displayRows().map(row => columns.map(col => {
                 const accessor = col.exportValue || col.value;
                 return accessor ? accessor(row) : null;
             })),
@@ -724,6 +1071,13 @@ export class DataGrid<TRow> {
             cells.set(col.key, td);
         }
 
+        if (this._selected.has(key)) {
+            const selectedClass = this.options.selectedClass || 'is-selected';
+            tr.className = tr.className ? `${tr.className} ${selectedClass}` : selectedClass;
+        }
+        if ((this.options.selection || 'none') !== 'none')
+            tr.addEventListener('click', (event: Event) => this._clickRow(key, event));
+
         if (this.options.bindRow) this.options.bindRow(tr, row);
         this._rowEls.set(key, tr);
         this._cellEls.set(key, cells);
@@ -765,6 +1119,34 @@ export class DataGrid<TRow> {
 
         this._rowEls.set(pinned.key, tr);
         this._cellEls.set(pinned.key, cells);
+        return tr;
+    }
+
+    /// Rows by their group value, in value order, each group keeping the row order
+    /// it was handed.
+    private _groups(rows: TRow[]): Map<string, TRow[]> {
+        const col = this.options.columns.find(c => c.key === this._group);
+        const groups = new Map<string, TRow[]>();
+        for (const row of rows) {
+            const value = DataGrid._text(col && col.value ? col.value(row) : null);
+            const bucket = groups.get(value);
+            if (bucket) bucket.push(row);
+            else groups.set(value, [row]);
+        }
+        return new Map([...groups.entries()].sort((a, b) => a[0].localeCompare(b[0])));
+    }
+
+    private _groupRow(value: string, count: number): HTMLTableRowElement {
+        const tr = document.createElement('tr') as HTMLTableRowElement;
+        tr.className = this._collapsed.has(value) ? 'grid-group is-collapsed' : 'grid-group';
+        tr.dataset.group = value;
+
+        const td = document.createElement('td') as HTMLTableCellElement;
+        td.colSpan = this.visibleColumns().length;
+        td.textContent = `${this._collapsed.has(value) ? '▸' : '▾'} ${value} (${count})`;
+        tr.appendChild(td);
+
+        tr.addEventListener('click', () => this.toggleGroup(value));
         return tr;
     }
 
