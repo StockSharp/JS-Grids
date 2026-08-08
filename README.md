@@ -5,9 +5,12 @@
 [![License](https://img.shields.io/badge/license-StockSharp%20EULA-c8202f.svg)](LICENSE)
 
 **StockSharp JS Data Grid** is the browser table component behind StockSharp's
-web applications: a column-driven `DataGrid` that owns its header, body, sort
-state and exported sheet, a `ColumnSettings` adapter for tables the server
-already rendered, and a dependency-free `.xlsx` writer.
+web applications: a column-driven `DataGrid` that owns its header, body, column
+order, sort, filters, grouping, selection and exported sheet, a `ColumnSettings`
+adapter for tables the server already rendered, and a dependency-free `.xlsx`
+writer.
+
+![A blotter with a filter row, selected rows and pinned totals](screenshots/blotter.jpg)
 
 [StockSharp website](https://stocksharp.com/) ·
 [GitHub repository](https://github.com/StockSharp/JS-Grids) ·
@@ -92,6 +95,103 @@ about before adopting.
 watchlist wants: a screen-sized table over a full sheet. `afterRender()` fires
 after every repaint, including one caused by a sort click the caller never saw,
 so a host can re-subscribe to the symbols now on screen.
+
+## What the user can do to a table
+
+Everything below is off unless the declaration asks for it, and all of it is in
+`getState()` — so a table comes back the way somebody left it.
+
+```ts
+const grid = new DataGrid<Order>({
+  // ...
+  reorderable: true,          // drag a header to move its column
+  selection: 'multi',         // 'none' (default) | 'single' | 'multi'
+  selectedClass: 'is-selected',
+  contextMenu: true,          // the grid's own menu, see below
+  onStateChange: (state) => localStorage.setItem('orders', JSON.stringify(state)),
+});
+
+grid.setState(JSON.parse(localStorage.getItem('orders') || '{}'));
+```
+
+| | |
+|---|---|
+| `setColumnOrder(keys)` `hideColumn(key)` `showColumn(key)` | the column view, which every render path reads |
+| `setFilter(key, filter)` `clearFilters()` | per-column filters — see below |
+| `groupBy(key)` `toggleGroup(value)` | single-level grouping, collapsible |
+| `setSelection(keys)` `selectedKeys()` `selectedRows()` | selection, held by row key |
+| `getState()` `setState(state)` | all of the above, as plain JSON |
+
+Three things about the state are worth knowing before you store it. Unknown column
+keys are **dropped rather than rejected**, so a view saved before a deploy that
+removed a column still restores the rest. A partial order **keeps the columns it
+does not name**, so a stored layout cannot hide a column added later. And
+`setState` does **not** fire `onStateChange`, or a store would write itself back
+on every page load.
+
+Selection is held by **row key**, not by index or element — which is what makes it
+survive a repaint that rebuilds every `<tr>`, and a filter that takes a row off
+screen and later brings it back.
+
+## Filters
+
+A column declares which control it wants; the grid draws the row under the header
+and does the filtering:
+
+```ts
+{ key: 'symbol', header: 'Symbol', filter: 'text',   exportable: true, value: o => o.symbol }
+{ key: 'pnl',    header: 'P&L',    filter: 'number', exportable: true, value: o => o.pnl }
+{ key: 'board',  header: 'Board',  filter: 'set',    exportable: true, value: o => o.board }
+```
+
+A filter is plain data — `{ text }`, `{ min, max }`, `{ values }` — rather than a
+predicate, and deliberately so: a closure cannot be written to a store, so a table
+filtered by one could never come back filtered the same way. An empty filter is
+the same as none, so clearing an input brings the rows back instead of matching
+nothing.
+
+## Grouping
+
+```ts
+grid.groupBy('board');     // a collapsible header per distinct value, with a count
+grid.groupBy(null);        // flat again
+```
+
+Groups run in value order while the rows inside each keep the sort the user
+picked. `renderLimit` counts rows of data rather than headers, and the export
+follows the on-screen order but drops the header rows — a spreadsheet has its own
+grouping, and a label row in the middle of the range breaks every formula pointed
+at it.
+
+## The context menu
+
+This is the one place the package draws chrome. Everywhere else the host owns it —
+the column picker's dialog is the host's markup and its own modal library. A menu
+is the exception because positioning a list at a pointer, dismissing it on the
+next click and on Escape and keeping it inside the window is the same hundred
+lines in every host, and none of them are about tables.
+
+![The grid's context menu with a host item on top](screenshots/context-menu.jpg)
+
+`contextMenu: true` gives you sort, group, filter by the value under the pointer,
+hide the column, show all, copy cell, copy row and export. A host can restyle it,
+reword it, add to it, or refuse it for a click:
+
+```ts
+contextMenu: {
+  classes: { menu: 'my-menu', item: 'my-menu-item' },
+  labels: { sortAsc: 'По возрастанию' },
+  items: (context, defaults) => context.row
+    ? [{ label: `Cancel #${context.row.id}`, run: () => cancel(context.row!.id) }, {}, ...defaults]
+    : defaults,
+}
+```
+
+Returning an empty array suppresses the menu for that click — and lets the
+browser's own appear, which is what refusing should mean. The grid names the
+elements (`grid-menu`, `grid-menu-item`, `grid-menu-separator`, `is-disabled`)
+and styles none of them; until your stylesheet describes them, the menu is
+invisible.
 
 ## Sorting
 

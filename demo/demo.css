@@ -1,0 +1,286 @@
+/* Demo page chrome for @stocksharp/grids.
+   Same palette as the StockSharp JS Charts demo, so the two look related.
+   The library itself decides nothing about looks: everything below is either
+   page chrome or a class name this page handed to a column (`cellClass`,
+   `rowClass`, the picker's `classes`). The three class names that come out of
+   the package are marked where they are styled: `grid-empty`, `visually-hidden`
+   and `sort-asc` / `sort-desc`. */
+:root {
+    --t-bg: #0b0e11; --t-panel: #131820; --t-header: #131820;
+    --t-text: #c7d0dc; --t-text-dim: #6b7a8d; --t-text-bright: #ffffff;
+    --t-border: #2a3546; --t-accent: #4a9eff; --t-up: #26a69a; --t-down: #ef5350;
+    --t-warn: #f0a742;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+    background: var(--t-bg);
+    color: var(--t-text);
+    font: 13px/1.4 'IBM Plex Mono', 'Consolas', monospace;
+    display: flex; flex-direction: column; overflow: hidden;
+}
+code { color: var(--t-accent); }
+.mono { font-variant-numeric: tabular-nums; }
+.dim { color: var(--t-text-dim); }
+.spacer { flex: 1; }
+
+/* Emitted by the package on a header whose caption is for screen readers only. */
+.visually-hidden {
+    position: absolute; width: 1px; height: 1px; overflow: hidden;
+    clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+}
+
+/* ------------------------------------------------------------------ chrome -- */
+.demo-header {
+    display: flex; align-items: center; gap: 12px; height: 52px; padding: 0 16px; flex: none;
+    background: var(--t-header); border-bottom: 1px solid var(--t-border);
+}
+.demo-header .brand { font-weight: 700; font-size: 15px; color: var(--t-text-bright); }
+.demo-header .sub { color: var(--t-text-dim); font-size: 12px; font-weight: 400; }
+
+.lede {
+    margin: 0; padding: 12px 16px; flex: none; max-width: 1100px;
+    font-size: 12.5px; line-height: 1.65; color: var(--t-text-dim);
+}
+.lede b { color: var(--t-text-bright); }
+
+.tbtn {
+    background: transparent; color: var(--t-text); border: 1px solid var(--t-border);
+    border-radius: 6px; padding: 6px 12px; cursor: pointer; font: inherit; font-size: 12px;
+    display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+}
+.tbtn:hover { border-color: var(--t-accent); color: var(--t-accent); }
+.tbtn.primary, .tbtn.on { background: var(--t-accent); color: #fff; border-color: var(--t-accent); }
+.tbtn .dot { width: 8px; height: 8px; border-radius: 50%; background: #ff3d57; opacity: .4; }
+.tbtn.on .dot { opacity: 1; animation: pulse 1s ease-in-out infinite; background: #fff; }
+@keyframes pulse { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.5); opacity: .35; } }
+
+/* ------------------------------------------------------------------ layout -- */
+.wrap { display: flex; flex: 1; min-height: 0; border-top: 1px solid var(--t-border); }
+.grid-panel { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--t-panel); }
+
+.toolbar {
+    display: flex; align-items: center; gap: 8px; padding: 10px 12px; flex: none;
+    border-bottom: 1px solid var(--t-border); background: var(--t-header);
+}
+.table-scroll { flex: 1; min-height: 0; overflow: auto; }
+.statusbar {
+    flex: none; padding: 7px 12px; border-top: 1px solid var(--t-border);
+    background: var(--t-header); color: var(--t-text-dim); font-size: 11.5px;
+    font-variant-numeric: tabular-nums; white-space: nowrap; overflow-x: auto;
+}
+
+.side {
+    width: 340px; flex: none; border-left: 1px solid var(--t-border);
+    background: var(--t-bg); display: flex; flex-direction: column; overflow-y: auto;
+}
+.side-block { padding: 14px 16px; border-bottom: 1px solid var(--t-border); flex: none; }
+.side-block.grow { flex: 1 0 auto; display: flex; flex-direction: column; min-height: 230px; border-bottom: none; }
+.side-title {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
+    color: var(--t-text-dim); margin-bottom: 10px; display: flex; align-items: center; gap: 8px;
+}
+.pill { background: var(--t-accent); color: #fff; border-radius: 10px; padding: 0 7px; font-size: 11px; line-height: 17px; }
+.hint { margin: 0; padding-left: 16px; font-size: 12px; line-height: 1.75; color: var(--t-text); }
+.hint b { color: var(--t-text-bright); }
+.note { margin: 12px 0 0; font-size: 11.5px; line-height: 1.6; color: var(--t-text-dim); }
+.note b { color: var(--t-text); }
+.sheet {
+    flex: 1; min-height: 120px; overflow: auto; margin: 0;
+    background: var(--t-panel); border: 1px solid var(--t-border); border-radius: 8px;
+    padding: 10px; font: 11px/1.7 'IBM Plex Mono', 'Consolas', monospace;
+    color: var(--t-text-dim); white-space: pre; font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------------ blotter -- */
+.blotter { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.blotter th {
+    position: sticky; top: 0; z-index: 2; text-align: left; white-space: nowrap;
+    background: var(--t-header); color: var(--t-text-dim);
+    font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
+    padding: 8px 10px; border-bottom: 1px solid var(--t-border); user-select: none;
+}
+.blotter th.num { text-align: right; }
+.blotter th.act { width: 1%; }
+.blotter th[data-sort] { cursor: pointer; }
+.blotter th[data-sort]:hover { color: var(--t-text-bright); }
+.blotter th[data-sort]::after { content: '↕'; margin-left: 6px; font-size: 10px; opacity: .3; }
+/* Emitted by the package on the sorted header. */
+.blotter th.sort-asc::after { content: '↑'; opacity: 1; color: var(--t-accent); }
+.blotter th.sort-desc::after { content: '↓'; opacity: 1; color: var(--t-accent); }
+
+.blotter td {
+    padding: 6px 10px; white-space: nowrap; border-bottom: 1px solid rgba(42,53,70,.5);
+}
+.blotter tbody tr:hover td { background: rgba(74,158,255,.06); }
+.blotter tbody tr.sel td { background: rgba(74,158,255,.14); }
+.blotter td.num { text-align: right; }
+.blotter td.sym { color: var(--t-text-bright); font-weight: 600; }
+.blotter td.part { color: var(--t-warn); }
+
+/* Class names this page's columns return from cellClass(). */
+.side-buy { color: var(--t-up); font-weight: 600; }
+.side-sell { color: var(--t-down); font-weight: 600; }
+.pnl-pos { color: var(--t-up); }
+.pnl-neg { color: var(--t-down); }
+
+.badge {
+    display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 10.5px;
+    border: 1px solid var(--t-border); color: var(--t-text-dim);
+}
+.badge-active { color: var(--t-accent); border-color: rgba(74,158,255,.45); }
+.badge-partial { color: var(--t-warn); border-color: rgba(240,167,66,.45); }
+.badge-done { color: var(--t-up); border-color: rgba(38,166,154,.45); }
+.badge-cancelled { color: var(--t-text-dim); }
+
+.rowbtn {
+    background: transparent; border: 1px solid var(--t-border); border-radius: 4px;
+    color: var(--t-text-dim); font: inherit; font-size: 11px; padding: 1px 8px; cursor: pointer;
+}
+.rowbtn:hover { color: var(--t-down); border-color: var(--t-down); }
+.blotter td.act { width: 1%; text-align: right; }
+
+/* Pinned rows: outside the sort, outside the sheet. */
+.blotter tr.pinned td {
+    background: rgba(74,158,255,.07); border-top: 1px solid var(--t-border);
+    border-bottom: 1px solid var(--t-border); font-weight: 600;
+}
+.blotter tr.pinned:hover td { background: rgba(74,158,255,.07); }
+.blotter tr.pinned .pin-label {
+    color: var(--t-text-bright); font-size: 10.5px; letter-spacing: .08em;
+}
+
+/* Emitted by the package when there is nothing to show. */
+.blotter td.grid-empty { text-align: center; padding: 34px; color: var(--t-text-dim); }
+
+@keyframes flashUp { from { background: rgba(38,166,154,.4); } to { background: transparent; } }
+@keyframes flashDown { from { background: rgba(239,83,80,.4); } to { background: transparent; } }
+.blotter td.flash-up { animation: flashUp 1s ease-out; }
+.blotter td.flash-down { animation: flashDown 1s ease-out; }
+
+/* -------------------------------------------------------------------- modal -- */
+.modal {
+    position: fixed; inset: 0; z-index: 1050; display: none;
+    align-items: center; justify-content: center; background: rgba(0,0,0,.6);
+}
+.modal.show { display: flex; }
+.modal-dialog {
+    width: 100%; max-width: 380px; margin: 20px;
+    background: var(--t-panel); border: 1px solid var(--t-border); border-radius: 10px;
+    box-shadow: 0 20px 50px rgba(0,0,0,.5); overflow: hidden;
+}
+.modal-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 16px; border-bottom: 1px solid var(--t-border);
+}
+.modal-title { margin: 0; font-size: 14px; color: var(--t-text-bright); }
+.btn-close { background: transparent; border: none; color: var(--t-text-dim); font-size: 22px; line-height: 1; cursor: pointer; }
+.btn-close:hover { color: var(--t-text-bright); }
+.modal-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--t-border); }
+
+/* The picker rows: class names this page handed to ColumnSettings. */
+.col-list { list-style: none; margin: 0; padding: 8px; max-height: 52vh; overflow-y: auto; }
+.col-item {
+    display: flex; align-items: center; gap: 8px; padding: 5px 8px;
+    border-radius: 6px; border: 1px solid transparent;
+}
+.col-item:hover { background: rgba(127,127,127,.07); border-color: var(--t-border); }
+.col-toggle { accent-color: var(--t-accent); width: 14px; height: 14px; cursor: pointer; }
+.col-label { flex: 1; font-size: 12px; }
+.col-move {
+    background: transparent; border: 1px solid var(--t-border); border-radius: 4px;
+    color: var(--t-text-dim); width: 24px; height: 22px; cursor: pointer; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+}
+.col-move:hover:not(:disabled) { color: var(--t-accent); border-color: var(--t-accent); }
+.col-move:disabled { opacity: .3; cursor: default; }
+.ico { font-style: normal; font-size: 10px; line-height: 1; }
+.ico-up::before { content: '↑'; }
+.ico-down::before { content: '↓'; }
+
+/* ---------------------------------------------------------------------------
+   The grid names its elements and styles none of them, so everything below is
+   this page's, not the package's: the filter row, the group headers, the
+   selected row and the context menu. A host on another stylesheet writes its own
+   and the grid is none the wiser.
+   --------------------------------------------------------------------------- */
+
+.grid-filters th {
+  padding: 4px 8px 8px;
+  background: var(--t-panel);
+  border-bottom: 1px solid var(--t-border);
+}
+
+.grid-filter {
+  width: 100%;
+  min-width: 0;
+  padding: 3px 6px;
+  border: 1px solid var(--t-border);
+  border-radius: 3px;
+  background: var(--t-bg);
+  color: var(--t-text);
+  font: inherit;
+  font-size: 11px;
+}
+
+.grid-filter:focus {
+  outline: none;
+  border-color: var(--t-accent);
+}
+
+/* Two boxes share one cell for a numeric range. */
+.grid-filter-min, .grid-filter-max { width: 48%; display: inline-block; }
+.grid-filter-min { margin-right: 4%; }
+
+.grid-group td {
+  padding: 6px 10px;
+  background: #161d29;
+  border-top: 1px solid var(--t-border);
+  border-bottom: 1px solid var(--t-border);
+  color: var(--t-text);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  user-select: none;
+}
+
+.grid-group:hover td { background: #1b2432; }
+.grid-group.is-collapsed td { color: var(--t-text-dim); }
+
+tr.sel td { background: #1d2a3d; }
+
+.grid-menu {
+  z-index: 50;
+  min-width: 200px;
+  padding: 4px 0;
+  border: 1px solid var(--t-border);
+  border-radius: 4px;
+  background: var(--t-panel);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+  font-size: 12px;
+}
+
+.grid-menu-item {
+  padding: 6px 14px;
+  color: var(--t-text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.grid-menu-item:hover { background: #1d2a3d; }
+
+.grid-menu-item.is-disabled {
+  color: var(--t-text-dim);
+  cursor: default;
+}
+
+.grid-menu-item.is-disabled:hover { background: transparent; }
+
+.grid-menu-item.is-checked::before { content: '· '; color: var(--t-accent); }
+
+.grid-menu-separator {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--t-border);
+}

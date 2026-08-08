@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ssgrid · StockSharp JS Grids</title>
+<link rel="stylesheet" href="./demo.css" />
+</head>
+<body>
+
+<header class="demo-header">
+  <span class="brand">ssgrid <span class="sub">· StockSharp JS Grids</span></span>
+  <span class="spacer"></span>
+  <span class="sub mono">&lt;script src="../dist/ssgrid.js"&gt; → window.SSGrid</span>
+</header>
+
+<p class="lede"><b>@stocksharp/grids</b> is the browser data grid behind StockSharp's web
+applications — one column declaration drives the header, the body, the sort and the exported
+sheet. This page runs the published bundle over 25 sample orders: sort by clicking a header,
+pick and reorder columns, keep pinned summary rows outside the sort, cap what is painted, and
+download a real <code>.xlsx</code>.</p>
+
+<main class="wrap">
+  <section class="grid-panel">
+    <div class="toolbar">
+      <button class="tbtn" id="btnColumns" type="button">Columns…</button>
+      <button class="tbtn" id="btnLive" type="button"><span class="dot"></span>Live prices</button>
+      <button class="tbtn" id="btnLimit" type="button">renderLimit = 10</button>
+      <button class="tbtn" id="btnClear" type="button">Clear rows</button>
+      <button class="tbtn" id="btnGroup" type="button">Group by board</button>
+      <button class="tbtn" id="btnFilters" type="button">Clear filters</button>
+      <button class="tbtn" id="btnRestore" type="button">Restore saved view</button>
+      <span class="pill" id="selCount">none selected</span>
+      <span class="spacer"></span>
+      <button class="tbtn" id="btnSummary" type="button">Summary .xlsx</button>
+      <button class="tbtn primary" id="btnExport" type="button">Download .xlsx</button>
+    </div>
+
+    <div class="table-scroll">
+      <table class="blotter" id="blotter">
+        <thead id="gridHead"></thead>
+        <tbody id="gridBody"></tbody>
+      </table>
+    </div>
+
+    <div class="statusbar" id="status"></div>
+  </section>
+
+  <aside class="side">
+    <div class="side-block">
+      <div class="side-title">What is live here</div>
+      <ul class="hint">
+        <li><b>Click a header</b> — asc → desc → back to the table default (<code>id desc</code>).</li>
+        <li><b>Columns…</b> — <code>ColumnSettings</code> over this table: tick to show, arrows to reorder.</li>
+        <li><b>WORKING / ALL ORDERS</b> — pinned rows: outside the sort, outside the sheet.</li>
+        <li><b>Cancel</b> — a real <code>&lt;button&gt;</code> returned by <code>render()</code>, with its own listener.</li>
+        <li><b>Click a row</b> — selection through <code>bindRow</code> + <code>rowClass</code>.</li>
+        <li><b>Live prices</b> — mutate the held array, <code>render()</code>, flash the changed cell via <code>cellElement()</code>.</li>
+        <li><b>renderLimit</b> — caps the paint, never the sheet.</li>
+      </ul>
+      <p class="note" id="layout">layout: <b>table default</b></p>
+      <div class="side-title">grid.getState()</div>
+      <pre class="sheet" id="stateOut">nothing changed yet</pre>
+    </div>
+
+    <div class="side-block grow">
+      <div class="side-title">grid.exportData() <span class="pill" id="sheetRows">0</span></div>
+      <pre class="sheet" id="preview"></pre>
+      <p class="note">The sheet the <b>Download .xlsx</b> button writes: the exportable columns,
+      every held row, in the order on screen. It follows the declarations, not the screen —
+      hiding a column or capping the paint leaves all 12 exportable columns and all 25 rows in
+      the workbook.</p>
+    </div>
+  </aside>
+</main>
+
+<div class="modal" id="colModal">
+  <div class="modal-dialog">
+    <div class="modal-header">
+      <h3 class="modal-title">Columns</h3>
+      <button class="btn-close" id="colClose" type="button" aria-label="Close">×</button>
+    </div>
+    <ul class="col-list" id="columnList"></ul>
+    <div class="modal-foot">
+      <button class="tbtn" id="colReset" type="button">Reset to default</button>
+      <button class="tbtn primary" id="colApply" type="button">Apply</button>
+    </div>
+  </div>
+</div>
+
+<script src="../dist/ssgrid.js"></script>
+<script src="./demo.js"></script>
+</body>
+</html>
