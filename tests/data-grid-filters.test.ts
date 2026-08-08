@@ -40,6 +40,8 @@ function makeGrid(extra: Record<string, unknown> = {}) {
         defaultSort: { col: 'id', dir: 'asc' },
         rowKey: r => String(r.id),
         emptyText: 'No rows',
+        // The row is opt-in now; the rule dialog is the default way to filter.
+        filtersVisible: true,
         ...extra,
     });
     grid.setRows(ROWS);
@@ -71,6 +73,7 @@ describe('DataGrid filters', () => {
             head: asDom(head),
             body: asDom(body),
             columns: [{ key: 'id', header: 'ID', exportable: true, value: r => r.id }],
+            filtersVisible: true,
             defaultSort: null,
             rowKey: r => String(r.id),
             emptyText: 'No rows',

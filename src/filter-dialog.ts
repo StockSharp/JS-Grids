@@ -182,7 +182,7 @@ export class GridFilterDialog {
 
         const actions = document.createElement('div');
         actions.className = this._classes.actions;
-        actions.appendChild(this._button(this._labels.apply, this._classes.apply, () => {
+        const applyButton = this._button(this._labels.apply, this._classes.apply, () => {
             const op = select.value as GridFilterOp;
             if (NEEDS_NO_OPERAND.has(op)) return commit({ op });
             if (op === 'between') {
@@ -191,7 +191,8 @@ export class GridFilterDialog {
                 return commit(min === undefined && max === undefined ? null : { op, min, max });
             }
             return commit(value.value.trim() === '' ? null : { op, text: value.value });
-        }));
+        });
+        actions.appendChild(applyButton);
         actions.appendChild(this._button(this._labels.clear, this._classes.clear, () => commit(null)));
         actions.appendChild(this._button(this._labels.cancel, this._classes.cancel, () => {}));
         el.appendChild(actions);
@@ -204,12 +205,19 @@ export class GridFilterDialog {
         // not dismissing it -- and the capture phase means this runs before the
         // control under the pointer ever sees the press.
         const dismiss = (event: Event) => {
+            const target = (event as unknown as { target?: Node }).target;
             if (event.type === 'keydown') {
                 const key = (event as KeyboardEvent).key;
-                if (key === 'Enter') { (actions.firstChild as HTMLElement).click(); return; }
+                // Enter in the operator list picks an operator. This listener runs in
+                // the capture phase, so treating that Enter as Apply would submit the
+                // rule the moment the user chose what it should be -- with the operand
+                // still empty, which reads as the dialog closing by itself.
+                if (key === 'Enter') {
+                    if (target !== select) applyButton.click();
+                    return;
+                }
                 if (key !== 'Escape') return;
             }
-            const target = (event as unknown as { target?: Node }).target;
             if (event.type === 'mousedown' && target && el.contains(target)) return;
             this.close();
         };

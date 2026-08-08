@@ -215,6 +215,37 @@ describe('DataGrid context menu', () => {
 
         assert.ok(labels(openMenu()!).includes('По возрастанию'));
     });
+
+    it('copies the whole selection, and says how many rows that is', () => {
+        const { grid, body } = makeGrid({ selection: 'multi' });
+        grid.setSelection(['1', '2']);
+
+        rightClick(body, 0, 1);
+        // The count is in the label because "Copy row" over a selection of two would
+        // be a lie about what the click is about to do.
+        const item = openMenu()!.children.find(el => (el.textContent || '').startsWith('Copy selected'))!;
+        assert.equal(item.textContent, 'Copy selected rows (2)');
+
+        fakeDocument.clipboard = '';
+        item.dispatchEvent({ type: 'click', target: item });
+
+        const lines = fakeDocument.clipboard.split(String.fromCharCode(10));
+        assert.equal(lines.length, 2);
+        assert.ok(lines[0].includes('AAPL'));
+        assert.ok(lines[1].includes('BTC'));
+    });
+
+    it('copies just the row under the pointer when nothing is selected', () => {
+        const { body } = makeGrid({ selection: 'multi' });
+
+        rightClick(body, 1, 1);
+        const item = openMenu()!.children.find(el => el.textContent === 'Copy row')!;
+        fakeDocument.clipboard = '';
+        item.dispatchEvent({ type: 'click', target: item });
+
+        assert.equal(fakeDocument.clipboard.includes('BTC'), true);
+        assert.equal(fakeDocument.clipboard.includes(String.fromCharCode(10)), false);
+    });
 });
 
 describe('GridContextMenu', () => {

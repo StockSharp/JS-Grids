@@ -22,6 +22,12 @@ export interface FakeEvent {
     /// Drag handling calls it to accept a drop; a test that wants to assert the
     /// call passes its own spy, and one that does not can leave it out.
     preventDefault?(): void;
+    /// Which button; selection answers the primary one and leaves the rest to the menu.
+    button?: number;
+    /// Which buttons are still held, so a drag can notice a release it never saw.
+    buttons?: number;
+    /// The physical key, which a shortcut matches instead of the letter it types.
+    code?: string;
     /// Selection reads these to tell a plain click from an add or a range.
     ctrlKey?: boolean;
     metaKey?: boolean;
@@ -191,6 +197,9 @@ export class FakeElement {
         return false;
     }
 
+    /// The off-screen field a clipboard fallback copies out of marks itself here.
+    select(): void { selectedField = this; }
+
     /// The context menu takes itself back out of the body when it closes.
     removeChild<T extends FakeNode>(node: T): T {
         const at = this.childNodes.indexOf(node);
@@ -290,6 +299,11 @@ function unbind(store: Map<string, FakeListener[]>, type: string, handler: FakeL
     if (at >= 0) list.splice(at, 1);
 }
 
+/// Which field `select()` was last called on, and what a copy took from it. The
+/// clipboard fallback works by selecting an off-screen textarea and asking the
+/// document to copy the selection, so this is where that lands here.
+let selectedField: FakeElement | null = null;
+
 export const fakeDocument = {
     createElement: (tag: string): FakeElement => new FakeElement(tag),
     createTextNode: (text: string): FakeText => new FakeText(text),
@@ -298,6 +312,15 @@ export const fakeDocument = {
     body: new FakeElement('body'),
     addEventListener: (type: string, handler: FakeListener): void => bind(documentListeners, type, handler),
     removeEventListener: (type: string, handler: FakeListener): void => unbind(documentListeners, type, handler),
+    /// What a page without navigator.clipboard copies with -- plain http to anything
+    /// but localhost, which is most of a LAN.
+    execCommand: (command: string): boolean => {
+        if (command !== 'copy' || !selectedField) return false;
+        fakeDocument.clipboard = selectedField.value;
+        return true;
+    },
+    /// What the last copy actually put on the clipboard.
+    clipboard: '',
 };
 
 export const fakeWindow = {

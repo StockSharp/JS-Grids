@@ -33,6 +33,11 @@ import { GridContextMenu, type GridMenuClasses, type GridMenuItem } from './cont
 import { GridFilterDialog, type GridFilterDialogClasses, type GridFilterDialogLabels } from './filter-dialog.js';
 import { TableExport } from './table-export.js';
 
+/// A row separator for the clipboard. Named because a bare escape inside a string
+/// is easy to mangle when this file is edited by a tool rather than by hand.
+const NEWLINE = String.fromCharCode(10);
+const TAB = String.fromCharCode(9);
+
 /** Where a pinned row sits relative to the sorted body rows. */
 export const GridPinnedPlacements = {
     Top: 'top',
@@ -188,6 +193,7 @@ export interface GridMenuLabels {
     clearFilters: string;
     copyCell: string;
     copyRow: string;
+    copyRows: string;
     exportXlsx: string;
 }
 
@@ -206,6 +212,7 @@ const MENU_LABELS: GridMenuLabels = {
     clearFilters: 'Clear filters',
     copyCell: 'Copy cell',
     copyRow: 'Copy row',
+    copyRows: 'Copy selected rows',
     exportXlsx: 'Export to .xlsx',
 };
 
@@ -318,9 +325,10 @@ export interface GridOptions<TRow> {
      */
     reorderable?: boolean;
     /**
-     * Whether the filter row starts on screen. It only exists at all once some column
-     * declares a filter; this decides whether it is shown, and the user can toggle it
-     * from the menu.
+     * Show the row of filter boxes under the header. Off by default: the rule dialog
+     * says everything the row can and more -- an operator, not just a substring -- and
+     * a row of boxes costs a line of vertical space on every table that has one. Turn
+     * it on for a table where filtering is the main activity.
      */
     filtersVisible?: boolean;
     /**
@@ -371,6 +379,10 @@ export class DataGrid<TRow> {
     /// Where a shift-click measures its range from.
     private _anchorKey: string | null;
     private _menu: GridContextMenu | null;
+    private _dragging: boolean;
+    /// The grid a keyboard shortcut belongs to: the last one the pointer touched.
+    /// Two grids on a page both holding a selection would otherwise both answer Ctrl+C.
+    private static _active: DataGrid<unknown> | null = null;
     private _filterDialog: GridFilterDialog | null;
     private _collapsed: Set<string>;
     /// The rendered filter controls, by column key, so a stored filter can be put
@@ -393,13 +405,14 @@ export class DataGrid<TRow> {
         this._hidden = new Set();
         this._dragKey = null;
         this._filters = {};
-        this._filtersVisible = options.filtersVisible !== false;
+        this._filtersVisible = options.filtersVisible === true;
         this._group = null;
         this._collapsed = new Set();
         this._selected = new Set();
         this._anchorKey = null;
         this._menu = null;
         this._filterDialog = null;
+        this._dragging = false;
         this._filterEls = new Map();
         this._restoring = false;
 
@@ -415,6 +428,7 @@ export class DataGrid<TRow> {
         this.sort = new TableSort<TRow>(options.head, accessors, () => this.render(), options.defaultSort);
         this._paint();
         if (options.contextMenu) this._bindContextMenu();
+        if ((options.selection || 'none') !== 'none') this._bindCopyShortcut();
     }
 
     /** Every declared column in display order, hidden ones included. */
@@ -649,7 +663,12 @@ export class DataGrid<TRow> {
             items.push(
                 {},
                 { label: labels.copyCell, run: () => DataGrid._copy(context.text) },
-                { label: labels.copyRow, run: () => DataGrid._copy(this._rowText(context.row!)) },
+                {
+                    // Names how many rows go, because "Copy row" over a selection of
+                    // twelve would be a lie about what the click is about to do.
+                    label: this._selected.size > 1 ? `${labels.copyRows} (${this._selected.size})` : labels.copyRow,
+                    run: () => this.copyRows(context.row),
+                },
             );
         }
 
@@ -666,6 +685,7 @@ export class DataGrid<TRow> {
         this._menu = new GridContextMenu(this._menuOptions().classes);
 
         const onContext = (event: Event) => {
+            DataGrid._active = this as unknown as DataGrid<unknown>;
             const target = (event as unknown as { target?: Element }).target;
             const cell = target && typeof target.closest === 'function'
                 ? target.closest('[data-col]') as HTMLElement | null
@@ -694,18 +714,67 @@ export class DataGrid<TRow> {
         this.options.body.addEventListener('contextmenu', onContext);
     }
 
+    /// The same columns and the same accessors the sheet uses. A row on the clipboard
+    /// and a row in the .xlsx are the same data going to the same place, so a column
+    /// that renders a button has nothing to contribute to either, and one that exports
+    /// "Buy" must not copy the 0 behind it.
     private _rowText(row: TRow): string {
         return this.visibleColumns()
-            .map(col => (col.value ? DataGrid._text(col.value(row)) : ''))
-            .join('	');
+            .filter(col => col.exportable)
+            .map(col => DataGrid._text((col.exportValue || col.value)!(row)))
+            .join(TAB);
     }
 
-    /// Clipboard writes are best-effort: the API is unavailable over plain http and
-    /// rejects when the document is not focused, and a copy that failed is not worth
-    /// taking the page down over.
-    private static _copy(text: string): void {
+    /// Put text on the clipboard, returning whether anything was written.
+    /// navigator.clipboard exists only in a secure context, so on a page served over
+    /// plain http to anything but localhost it is simply undefined -- which is how
+    /// Copy row came to do nothing at all on a LAN address while working locally. The
+    /// older execCommand path still works there, so it is the fallback rather than a
+    /// silent no-op.
+    private static _copy(text: string): boolean {
         const clipboard = typeof navigator !== 'undefined' ? navigator.clipboard : undefined;
-        clipboard?.writeText(text).catch(() => {});
+        if (clipboard && clipboard.writeText) {
+            clipboard.writeText(text).catch(() => DataGrid._copyFallback(text));
+            return true;
+        }
+        return DataGrid._copyFallback(text);
+    }
+
+    private static _copyFallback(text: string): boolean {
+        if (typeof document === 'undefined' || !document.body) return false;
+
+        const area = document.createElement('textarea') as HTMLTextAreaElement;
+        area.value = text;
+        // Off-screen rather than hidden: execCommand copies from a field that is in
+        // the layout, and display:none takes it out of the layout.
+        area.style.position = 'fixed';
+        area.style.left = '-9999px';
+        document.body.appendChild(area);
+        try {
+            area.select();
+            return typeof document.execCommand === 'function' && document.execCommand('copy');
+        } catch {
+            return false;
+        } finally {
+            area.parentNode?.removeChild(area);
+        }
+    }
+
+    /**
+     * What Copy row and Ctrl+C put on the clipboard: the selected rows when there is
+     * a selection, otherwise the one row asked for. Tab-separated, one row per line,
+     * which is what a spreadsheet reads back as cells.
+     */
+    copyText(row: TRow | null): string {
+        const selected = this.selectedRows();
+        const rows = selected.length > 0 ? selected : (row === null ? [] : [row]);
+        return rows.map(r => this._rowText(r)).join(NEWLINE);
+    }
+
+    /** Copy the current selection, or the row given. True when anything was written. */
+    copyRows(row: TRow | null): boolean {
+        const text = this.copyText(row);
+        return text === '' ? false : DataGrid._copy(text);
     }
 
     /** Selected row keys, in the order they appear on screen. */
@@ -738,6 +807,46 @@ export class DataGrid<TRow> {
         if (before.length === after.length && before.every((key, i) => key === after[i])) return;
         this.render();
         if (this.options.onSelectionChange) this.options.onSelectionChange(after);
+    }
+
+    private _beginDragSelect(): void {
+        this._dragging = true;
+        const end = () => {
+            this._dragging = false;
+            document.removeEventListener('mouseup', end, true);
+        };
+        document.addEventListener('mouseup', end, true);
+    }
+
+    private _extendTo(key: string): void {
+        if (this._anchorKey === null) return;
+        const order = this.displayRows().map(row => this.options.rowKey(row));
+        const from = order.indexOf(this._anchorKey);
+        const to = order.indexOf(key);
+        if (from === -1 || to === -1) return;
+        this._replaceSelection(new Set(order.slice(Math.min(from, to), Math.max(from, to) + 1)));
+    }
+
+    /// Ctrl+C over the table copies the selected rows. Bound on the document because
+    /// a table has no focus of its own, and answered only by the grid the pointer last
+    /// touched -- otherwise every grid on the page would copy at once.
+    private _bindCopyShortcut(): void {
+        document.addEventListener('keydown', (event: Event) => {
+            const e = event as unknown as { key?: string; code?: string; ctrlKey?: boolean; metaKey?: boolean; target?: { tagName?: string } };
+            if (!(e.ctrlKey || e.metaKey)) return;
+            // `code` is the physical key, so this holds on a layout where that key
+            // types something other than "c" -- on a Russian one it reports "с".
+            const isC = e.code ? e.code === 'KeyC' : (e.key || '').toLowerCase() === 'c';
+            if (!isC) return;
+            if (DataGrid._active !== (this as unknown as DataGrid<unknown>)) return;
+            if (this._selected.size === 0) return;
+
+            // Never steal a copy from a field the user is typing in.
+            const tag = e.target && e.target.tagName;
+            if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+            if (this.copyRows(null)) event.preventDefault();
+        });
     }
 
     private _clickRow(key: string, event: Event): void {
@@ -1207,15 +1316,34 @@ export class DataGrid<TRow> {
             const selectedClass = this.options.selectedClass || 'is-selected';
             tr.className = tr.className ? `${tr.className} ${selectedClass}` : selectedClass;
         }
-        if ((this.options.selection || 'none') !== 'none') {
-            // Shift-clicking rows is a range in this table and a text selection in the
-            // browser, and doing both at once leaves the page smeared in highlight.
-            // The gesture is claimed on mousedown, which is where the browser starts it.
+        const mode = this.options.selection || 'none';
+        if (mode !== 'none') {
+            // Selection happens on mousedown, not on click, for two reasons that are
+            // the same reason: that is when a real table responds, and that is when the
+            // browser would otherwise start dragging a text selection across the rows.
+            // preventDefault claims the gesture for the table.
             tr.addEventListener('mousedown', (event: Event) => {
+                const button = (event as unknown as { button?: number }).button;
+                if (button !== undefined && button !== 0) return;   // right-click belongs to the menu
+                event.preventDefault();
+                DataGrid._active = this as DataGrid<unknown>;
+                this._clickRow(key, event);
+
                 const m = event as unknown as { shiftKey?: boolean; ctrlKey?: boolean; metaKey?: boolean };
-                if (m.shiftKey || m.ctrlKey || m.metaKey) event.preventDefault();
+                if (mode === 'multi' && !m.shiftKey && !m.ctrlKey && !m.metaKey) this._beginDragSelect();
             });
-            tr.addEventListener('click', (event: Event) => this._clickRow(key, event));
+
+            // Dragging across rows extends the selection, which is what the pointer
+            // was doing anyway -- it just used to paint text instead of rows.
+            tr.addEventListener('mouseenter', (event: Event) => {
+                if (!this._dragging) return;
+                // A mouseup released outside the window never reaches us, and a grid
+                // stuck in drag mode selects whatever the pointer wanders over next.
+                // The event carries which buttons are actually down; trust that.
+                const buttons = (event as unknown as { buttons?: number }).buttons;
+                if (buttons !== undefined && (buttons & 1) === 0) { this._dragging = false; return; }
+                this._extendTo(key);
+            });
         }
 
         if (this.options.bindRow) this.options.bindRow(tr, row);

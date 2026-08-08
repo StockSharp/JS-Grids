@@ -271,6 +271,7 @@ export interface GridMenuLabels {
     clearFilters: string;
     copyCell: string;
     copyRow: string;
+    copyRows: string;
     exportXlsx: string;
 }
 /** How many rows a user may have selected at once. */
@@ -375,9 +376,10 @@ export interface GridOptions<TRow> {
      */
     reorderable?: boolean;
     /**
-     * Whether the filter row starts on screen. It only exists at all once some column
-     * declares a filter; this decides whether it is shown, and the user can toggle it
-     * from the menu.
+     * Show the row of filter boxes under the header. Off by default: the rule dialog
+     * says everything the row can and more -- an operator, not just a substring -- and
+     * a row of boxes costs a line of vertical space on every table that has one. Turn
+     * it on for a table where filtering is the main activity.
      */
     filtersVisible?: boolean;
     /**
@@ -440,6 +442,14 @@ export declare class DataGrid<TRow> {
      * the menu can still reach for the parts of it that it wants to keep.
      */
     menuItems(context: GridMenuContext<TRow>): GridMenuItem[];
+    /**
+     * What Copy row and Ctrl+C put on the clipboard: the selected rows when there is
+     * a selection, otherwise the one row asked for. Tab-separated, one row per line,
+     * which is what a spreadsheet reads back as cells.
+     */
+    copyText(row: TRow | null): string;
+    /** Copy the current selection, or the row given. True when anything was written. */
+    copyRows(row: TRow | null): boolean;
     /** Selected row keys, in the order they appear on screen. */
     selectedKeys(): string[];
     /** The selected rows that are actually on screen. */

@@ -214,6 +214,9 @@
         emptyText: 'No orders',
         // Drag a header to move its column.
         reorderable: true,
+        // The row of boxes stays available from the menu, but the rule dialog is the
+        // way in: it can say '> 1000' and 'is empty', which a box cannot.
+        filtersVisible: false,
         // Ctrl adds, shift takes a range -- measured against the order on screen.
         selection: 'multi',
         selectedClass: 'sel',
@@ -253,6 +256,10 @@
 
     document.getElementById('btnFilters').addEventListener('click', function () {
         grid.clearFilters();
+    });
+
+    document.getElementById('btnFilterRow').addEventListener('click', function () {
+        grid.showFilters(!grid.filtersVisible());
     });
 
     // Restoring is the host handing an arrangement back, which is why the grid does
