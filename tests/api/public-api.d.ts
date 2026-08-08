@@ -130,6 +130,7 @@ export declare class GridContextMenu {
 // FILE: data-grid.d.ts
 import { TableSort, type SortSpec } from './table-sort.js';
 import { type GridMenuClasses, type GridMenuItem } from './context-menu.js';
+import { type GridFilterDialogClasses, type GridFilterDialogLabels } from './filter-dialog.js';
 /** Where a pinned row sits relative to the sorted body rows. */
 export declare const GridPinnedPlacements: {
     readonly Top: "top";
@@ -233,6 +234,9 @@ export interface GridMenuContext<TRow> {
     row: TRow | null;
     /** The value of that row in that column, already rendered as text. */
     text: string;
+    /** Where the click landed, so anything the menu opens can appear there. */
+    x: number;
+    y: number;
 }
 /** How the grid's own menu is set up, and how a host takes it over. */
 export interface GridMenuOptions<TRow> {
@@ -245,6 +249,11 @@ export interface GridMenuOptions<TRow> {
     items?(context: GridMenuContext<TRow>, defaults: GridMenuItem[]): GridMenuItem[];
     /** Wording, for a host that is not in English. */
     labels?: Partial<GridMenuLabels>;
+    /** Class names and wording for the filter rule dialog the menu opens. */
+    filterDialog?: {
+        classes?: GridFilterDialogClasses;
+        labels?: Partial<GridFilterDialogLabels>;
+    };
 }
 /** Every phrase the built-in menu can show. */
 export interface GridMenuLabels {
@@ -256,6 +265,7 @@ export interface GridMenuLabels {
     groupBy: string;
     ungroup: string;
     filterByValue: string;
+    filterRule: string;
     showFilters: string;
     hideFilters: string;
     clearFilters: string;
@@ -272,14 +282,26 @@ export type GridSelectionMode = 'none' | 'single' | 'multi';
  * of them set means no filter at all.
  */
 export interface GridFilter {
-    /** Matches anywhere in the value, case-insensitively. */
+    /**
+     * The rule. Absent means the shape decides: `text` reads as "contains", a
+     * min/max pair as "between" -- which is what the inline row writes, and what a
+     * filter stored before operators existed still means.
+     */
+    op?: GridFilterOp;
+    /** The value the rule compares against, for every op but `empty` / `notEmpty`. */
     text?: string;
-    /** Inclusive bounds, each optional on its own. */
+    /** Inclusive bounds for `between`; `min` alone also carries the operand of ge/gt/eq/ne on numbers. */
     min?: number;
     max?: number;
     /** Exact matches against the value's text. */
     values?: string[];
 }
+/**
+ * What a filter asks of a value. Text and numbers share the comparison ops -- a
+ * user filtering an id column expects `>` to mean what it says, and a symbol
+ * column compares as text.
+ */
+export type GridFilterOp = 'contains' | 'notContains' | 'startsWith' | 'endsWith' | 'eq' | 'ne' | 'gt' | 'ge' | 'lt' | 'le' | 'between' | 'empty' | 'notEmpty';
 /**
  * What the user arranged, and nothing the data decided. This is the whole of what
  * a host has to store to bring a table back the way somebody left it: which
@@ -424,6 +446,11 @@ export declare class DataGrid<TRow> {
     selectedRows(): TRow[];
     setSelection(keys: string[]): void;
     clearSelection(): void;
+    /**
+     * Open the rule dialog for a column -- an operator and its operand, which is what
+     * the inline row cannot express without growing a second control per column.
+     */
+    openFilterDialog(key: string, x: number, y: number): void;
     /** The column the rows are grouped under, or null. */
     groupedBy(): string | null;
     /** Group by a column, or pass null to go flat. */
@@ -496,6 +523,48 @@ export declare class DataGrid<TRow> {
      */
 }
 
+// FILE: filter-dialog.d.ts
+import type { GridFilter, GridFilterKind, GridFilterOp } from './data-grid.js';
+/** Class names for the dialog's parts. */
+export interface GridFilterDialogClasses {
+    dialog?: string;
+    title?: string;
+    row?: string;
+    select?: string;
+    input?: string;
+    actions?: string;
+    apply?: string;
+    clear?: string;
+    cancel?: string;
+}
+/** Every phrase the dialog shows. */
+export interface GridFilterDialogLabels {
+    title: string;
+    apply: string;
+    clear: string;
+    cancel: string;
+    value: string;
+    and: string;
+    ops: Record<GridFilterOp, string>;
+}
+export declare class GridFilterDialog {
+    constructor(classes?: GridFilterDialogClasses, labels?: Partial<GridFilterDialogLabels>);
+    get isOpen(): boolean;
+    /**
+     * Ask for a filter on one column. `commit` is called with the new filter, or
+     * with null when the user clears it; cancelling calls nothing at all, so a
+     * dialog dismissed by mistake leaves the table exactly as it was.
+     */
+    open(options: {
+        header: string;
+        kind: GridFilterKind;
+        current: GridFilter | null;
+        x: number;
+        y: number;
+    }, commit: (filter: GridFilter | null) => void): void;
+    close(): void;
+}
+
 // FILE: index.d.ts
 export { DataGrid, GridPinnedPlacements } from './data-grid.js';
 export type { GridColumn, GridExportData, GridOptions, GridPinnedCell, GridPinnedPlacement, GridPinnedRow, } from './data-grid.js';
@@ -505,6 +574,7 @@ export { ColumnSettings } from './column-settings.js';
 export type { ColumnLayoutStore, ColumnPickerClasses, ColumnSettingsDialog, ColumnSettingsOptions, } from './column-settings.js';
 export { TableExport } from './table-export.js';
 export { GridContextMenu, type GridMenuClasses, type GridMenuItem } from './context-menu.js';
+export { GridFilterDialog, type GridFilterDialogClasses, type GridFilterDialogLabels } from './filter-dialog.js';
 
 // FILE: table-export.d.ts
 export declare const TableExport: {

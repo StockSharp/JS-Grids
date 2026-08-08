@@ -213,4 +213,63 @@ describe('DataGrid filters', () => {
         assert.equal(head.children.length, 2);
         assert.equal(head.children[1].children[1].children[0].value, 'aapl');
     });
+
+    it('reads an operator when one is given', () => {
+        const { grid, body } = makeGrid();
+
+        grid.setFilter('qty', { op: 'gt', text: '10' });
+        assert.deepEqual(shownIds(body), ['3']);
+
+        grid.setFilter('qty', { op: 'le', text: '0' });
+        assert.deepEqual(shownIds(body), ['2', '4']);
+
+        grid.setFilter('qty', { op: 'ne', text: '10' });
+        assert.deepEqual(shownIds(body), ['2', '3', '4']);
+    });
+
+    it('compares text as text and numbers as numbers', () => {
+        const { grid, body } = makeGrid();
+
+        // '9' > '10' as strings, 9 < 10 as numbers -- a quantity column has to mean
+        // the second, and a symbol column can only mean the first.
+        grid.setFilter('symbol', { op: 'gt', text: 'B' });
+        assert.deepEqual(shownIds(body), ['2', '4']);
+
+        grid.setFilter('symbol', null);
+        grid.setFilter('qty', { op: 'gt', text: '9' });
+        assert.deepEqual(shownIds(body), ['1', '3']);
+    });
+
+    it('asks about the value itself for empty and notEmpty', () => {
+        const { grid, body } = makeGrid();
+
+        // These two are a filter with nothing typed in, which every other op is not.
+        grid.setFilter('symbol', { op: 'notEmpty' });
+        assert.deepEqual(shownIds(body), ['1', '2', '3', '4']);
+        assert.deepEqual(grid.filters(), { symbol: { op: 'notEmpty' } });
+
+        grid.setFilter('symbol', { op: 'empty' });
+        assert.deepEqual(shownIds(body), []);
+    });
+
+    it('ignores an operator with nothing to compare against', () => {
+        const { grid } = makeGrid();
+
+        grid.setFilter('qty', { op: 'gt' });
+
+        assert.deepEqual(grid.filters(), {});
+    });
+
+    it('keeps meaning what it meant when no operator is given', () => {
+        const { grid, body } = makeGrid();
+
+        // What the inline row writes, and what a filter stored before operators
+        // existed looks like.
+        grid.setFilter('symbol', { text: 'aap' });
+        assert.deepEqual(shownIds(body), ['1', '3']);
+
+        grid.setFilter('symbol', null);
+        grid.setFilter('qty', { min: 0, max: 10 });
+        assert.deepEqual(shownIds(body), ['1', '4']);
+    });
 });

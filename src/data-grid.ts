@@ -30,6 +30,7 @@
 // spells them, which is a coupling worth knowing about before adopting.
 import { TableSort, type SortSpec } from './table-sort.js';
 import { GridContextMenu, type GridMenuClasses, type GridMenuItem } from './context-menu.js';
+import { GridFilterDialog, type GridFilterDialogClasses, type GridFilterDialogLabels } from './filter-dialog.js';
 import { TableExport } from './table-export.js';
 
 /** Where a pinned row sits relative to the sorted body rows. */
@@ -151,6 +152,9 @@ export interface GridMenuContext<TRow> {
     row: TRow | null;
     /** The value of that row in that column, already rendered as text. */
     text: string;
+    /** Where the click landed, so anything the menu opens can appear there. */
+    x: number;
+    y: number;
 }
 
 /** How the grid's own menu is set up, and how a host takes it over. */
@@ -164,6 +168,8 @@ export interface GridMenuOptions<TRow> {
     items?(context: GridMenuContext<TRow>, defaults: GridMenuItem[]): GridMenuItem[];
     /** Wording, for a host that is not in English. */
     labels?: Partial<GridMenuLabels>;
+    /** Class names and wording for the filter rule dialog the menu opens. */
+    filterDialog?: { classes?: GridFilterDialogClasses; labels?: Partial<GridFilterDialogLabels> };
 }
 
 /** Every phrase the built-in menu can show. */
@@ -176,6 +182,7 @@ export interface GridMenuLabels {
     groupBy: string;
     ungroup: string;
     filterByValue: string;
+    filterRule: string;
     showFilters: string;
     hideFilters: string;
     clearFilters: string;
@@ -193,6 +200,7 @@ const MENU_LABELS: GridMenuLabels = {
     groupBy: 'Group by this column',
     ungroup: 'Ungroup',
     filterByValue: 'Filter by this value',
+    filterRule: 'Filter…',
     showFilters: 'Show filter row',
     hideFilters: 'Hide filter row',
     clearFilters: 'Clear filters',
@@ -211,14 +219,30 @@ export type GridSelectionMode = 'none' | 'single' | 'multi';
  * of them set means no filter at all.
  */
 export interface GridFilter {
-    /** Matches anywhere in the value, case-insensitively. */
+    /**
+     * The rule. Absent means the shape decides: `text` reads as "contains", a
+     * min/max pair as "between" -- which is what the inline row writes, and what a
+     * filter stored before operators existed still means.
+     */
+    op?: GridFilterOp;
+    /** The value the rule compares against, for every op but `empty` / `notEmpty`. */
     text?: string;
-    /** Inclusive bounds, each optional on its own. */
+    /** Inclusive bounds for `between`; `min` alone also carries the operand of ge/gt/eq/ne on numbers. */
     min?: number;
     max?: number;
     /** Exact matches against the value's text. */
     values?: string[];
 }
+
+/**
+ * What a filter asks of a value. Text and numbers share the comparison ops -- a
+ * user filtering an id column expects `>` to mean what it says, and a symbol
+ * column compares as text.
+ */
+export type GridFilterOp =
+    'contains' | 'notContains' | 'startsWith' | 'endsWith'
+    | 'eq' | 'ne' | 'gt' | 'ge' | 'lt' | 'le' | 'between'
+    | 'empty' | 'notEmpty';
 
 /**
  * What the user arranged, and nothing the data decided. This is the whole of what
@@ -347,6 +371,7 @@ export class DataGrid<TRow> {
     /// Where a shift-click measures its range from.
     private _anchorKey: string | null;
     private _menu: GridContextMenu | null;
+    private _filterDialog: GridFilterDialog | null;
     private _collapsed: Set<string>;
     /// The rendered filter controls, by column key, so a stored filter can be put
     /// back into them without rebuilding the row under the user's cursor.
@@ -374,6 +399,7 @@ export class DataGrid<TRow> {
         this._selected = new Set();
         this._anchorKey = null;
         this._menu = null;
+        this._filterDialog = null;
         this._filterEls = new Map();
         this._restoring = false;
 
@@ -488,28 +514,71 @@ export class DataGrid<TRow> {
 
     private static _normalizeFilter(filter: GridFilter): GridFilter | null {
         const out: GridFilter = {};
+        // `empty` and `notEmpty` ask about the value itself, so they are a filter even
+        // with nothing typed in -- every other op needs an operand to mean anything.
+        if (filter.op === 'empty' || filter.op === 'notEmpty') return { op: filter.op };
+        if (filter.op) out.op = filter.op;
         const text = typeof filter.text === 'string' ? filter.text.trim() : '';
         if (text) out.text = text;
         if (typeof filter.min === 'number' && Number.isFinite(filter.min)) out.min = filter.min;
         if (typeof filter.max === 'number' && Number.isFinite(filter.max)) out.max = filter.max;
         if (filter.values && filter.values.length) out.values = [...filter.values];
+        // An op on its own filters nothing; it needs something to compare against.
+        if (out.op && out.text === undefined && out.min === undefined && out.max === undefined && !out.values) return null;
         return Object.keys(out).length ? out : null;
     }
 
     private static _passes(value: unknown, filter: GridFilter): boolean {
-        if (filter.text !== undefined) {
-            if (!DataGrid._text(value).toLowerCase().includes(filter.text.toLowerCase())) return false;
-        }
-        if (filter.min !== undefined || filter.max !== undefined) {
-            const n = typeof value === 'number' ? value : Number(value);
+        // A set filter is its own thing: it is picked from the values present rather
+        // than compared, so it applies whatever else the filter says.
+        if (filter.values !== undefined && !filter.values.includes(DataGrid._text(value))) return false;
+
+        const op = DataGrid._effectiveOp(filter);
+        if (!op) return true;
+
+        const text = DataGrid._text(value);
+        if (op === 'empty') return text === '';
+        if (op === 'notEmpty') return text !== '';
+
+        if (op === 'between') {
+            const n = Number(text);
             if (!Number.isFinite(n)) return false;
             if (filter.min !== undefined && n < filter.min) return false;
             if (filter.max !== undefined && n > filter.max) return false;
+            return true;
         }
-        if (filter.values !== undefined) {
-            if (!filter.values.includes(DataGrid._text(value))) return false;
+
+        // Compared as numbers when both sides are numbers, as text otherwise: `>` on a
+        // symbol column has to mean something, and on a quantity it has to mean the
+        // arithmetic thing rather than '9' > '10'.
+        const operandText = filter.text !== undefined ? filter.text : (filter.min !== undefined ? String(filter.min) : '');
+        const left = Number(text);
+        const right = Number(operandText);
+        const numeric = text !== '' && operandText !== '' && Number.isFinite(left) && Number.isFinite(right);
+
+        switch (op) {
+            case 'contains': return text.toLowerCase().includes(operandText.toLowerCase());
+            case 'notContains': return !text.toLowerCase().includes(operandText.toLowerCase());
+            case 'startsWith': return text.toLowerCase().startsWith(operandText.toLowerCase());
+            case 'endsWith': return text.toLowerCase().endsWith(operandText.toLowerCase());
+            case 'eq': return numeric ? left === right : text.toLowerCase() === operandText.toLowerCase();
+            case 'ne': return numeric ? left !== right : text.toLowerCase() !== operandText.toLowerCase();
+            case 'gt': return numeric ? left > right : text > operandText;
+            case 'ge': return numeric ? left >= right : text >= operandText;
+            case 'lt': return numeric ? left < right : text < operandText;
+            case 'le': return numeric ? left <= right : text <= operandText;
+            default: return true;
         }
-        return true;
+    }
+
+    /// The rule actually in force. Absent `op` keeps the old meaning of the shape, so
+    /// a filter written by the inline row -- or stored before operators existed --
+    /// goes on meaning what it meant.
+    private static _effectiveOp(filter: GridFilter): GridFilterOp | null {
+        if (filter.op) return filter.op;
+        if (filter.min !== undefined || filter.max !== undefined) return 'between';
+        if (filter.text !== undefined) return 'contains';
+        return null;
     }
 
     /**
@@ -532,6 +601,14 @@ export class DataGrid<TRow> {
                     ? { label: labels.ungroup, run: () => this.groupBy(null) }
                     : { label: labels.groupBy, run: () => this.groupBy(col.key) },
             );
+
+            if (col.filter) {
+                items.push({
+                    label: labels.filterRule,
+                    checked: this._filters[col.key] !== undefined,
+                    run: () => this.openFilterDialog(col.key, context.x, context.y),
+                });
+            }
 
             if (context.row !== null) {
                 items.push({
@@ -603,14 +680,14 @@ export class DataGrid<TRow> {
                 : this.displayRows().find(r => this.options.rowKey(r) === rowKey) || null;
             const text = column && row && column.value ? DataGrid._text(column.value(row)) : '';
 
-            const context: GridMenuContext<TRow> = { column, row, text };
+            const at = event as unknown as { clientX?: number; clientY?: number };
+            const context: GridMenuContext<TRow> = { column, row, text, x: at.clientX || 0, y: at.clientY || 0 };
             const build = this._menuOptions().items;
             const items = build ? build(context, this.menuItems(context)) : this.menuItems(context);
             if (items.length === 0) return;
 
             event.preventDefault();
-            const at = event as unknown as { clientX?: number; clientY?: number };
-            this._menu!.open(items, at.clientX || 0, at.clientY || 0);
+            this._menu!.open(items, context.x, context.y);
         };
 
         this.options.head.addEventListener('contextmenu', onContext);
@@ -689,6 +766,23 @@ export class DataGrid<TRow> {
         }
 
         this._replaceSelection(next);
+    }
+
+    /**
+     * Open the rule dialog for a column -- an operator and its operand, which is what
+     * the inline row cannot express without growing a second control per column.
+     */
+    openFilterDialog(key: string, x: number, y: number): void {
+        const col = this.options.columns.find(c => c.key === key);
+        if (!col || !col.filter) return;
+
+        const options = this._menuOptions().filterDialog || {};
+        if (!this._filterDialog) this._filterDialog = new GridFilterDialog(options.classes, options.labels);
+
+        this._filterDialog.open(
+            { header: col.header, kind: col.filter, current: this._filters[key] || null, x, y },
+            filter => this.setFilter(key, filter),
+        );
     }
 
     /** The column the rows are grouped under, or null. */

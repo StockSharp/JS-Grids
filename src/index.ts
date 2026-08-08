@@ -30,3 +30,7 @@ export { TableExport } from './table-export.js';
 /// The menu the grid offers on a right-click. Exported so a host that supplies its
 /// own items can still reuse the chrome, or open one from a button of its own.
 export { GridContextMenu, type GridMenuClasses, type GridMenuItem } from './context-menu.js';
+
+/// The popup the menu opens to build a filter rule. Exported so a host can open it
+/// from a control of its own -- a funnel in a header, a toolbar button.
+export { GridFilterDialog, type GridFilterDialogClasses, type GridFilterDialogLabels } from './filter-dialog.js';

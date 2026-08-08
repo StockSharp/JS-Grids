@@ -293,3 +293,65 @@ tr.sel td { background: #1d2a3d; }
   margin: 4px 0;
   background: var(--t-border);
 }
+
+/* The filter rule dialog. Same deal as the menu: the package builds it and names
+   it, the page decides what it looks like. */
+.grid-filter-dialog {
+  z-index: 60;
+  min-width: 280px;
+  padding: 12px 14px;
+  border: 1px solid var(--t-border);
+  border-radius: 4px;
+  background: var(--t-panel);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+  font-size: 12px;
+}
+
+.grid-filter-dialog-title {
+  margin-bottom: 10px;
+  color: var(--t-text-bright);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 11px;
+}
+
+.grid-filter-dialog-row { display: flex; align-items: center; gap: 6px; }
+
+.grid-filter-dialog-op, .grid-filter-dialog-value {
+  padding: 4px 6px;
+  border: 1px solid var(--t-border);
+  border-radius: 3px;
+  background: var(--t-bg);
+  color: var(--t-text);
+  font: inherit;
+  font-size: 12px;
+}
+
+.grid-filter-dialog-value { flex: 1; min-width: 0; }
+
+.grid-filter-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.grid-filter-dialog-actions button {
+  padding: 4px 12px;
+  border: 1px solid var(--t-border);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--t-text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.grid-filter-dialog-apply {
+  border-color: var(--t-accent) !important;
+  background: var(--t-accent) !important;
+  color: #fff !important;
+}
+
+.grid-filter-dialog-actions button:hover { border-color: var(--t-accent); }
