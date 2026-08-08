@@ -1,7 +1,7 @@
 # AGENTS.md — StockSharp Grid
 
 Guidance for AI coding agents (and humans) working in this repository,
-`@stocksharp/grid`.
+`@stocksharp/grids`.
 
 ## What this is
 The browser data grid StockSharp's web applications render their tables with:
@@ -96,7 +96,7 @@ permission` on publish:
   `npm publish` step into a different workflow file. The npm Trusted Publisher is
   bound to the workflow filename `release.yml`; a different filename fails OIDC
   claim matching. If a rename is unavoidable, first update the Trusted Publisher
-  at npmjs.com → `@stocksharp/grid` → Settings → Trusted Publisher to the new
+  at npmjs.com → `@stocksharp/grids` → Settings → Trusted Publisher to the new
   filename.
 - **Do not add `NODE_AUTH_TOKEN` / `NPM_TOKEN`** to the publish step or to
   `setup-node`'s auth. A stale or placeholder token shadows the OIDC exchange.

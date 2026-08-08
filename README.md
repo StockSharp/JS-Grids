@@ -1,7 +1,7 @@
 # StockSharp JS Data Grid
 
-[![Build and test](https://github.com/StockSharp/Grids/actions/workflows/ci.yml/badge.svg)](https://github.com/StockSharp/Grids/actions/workflows/ci.yml)
-[![npm version](https://img.shields.io/npm/v/%40stocksharp%2Fgrid.svg)](https://www.npmjs.com/package/@stocksharp/grid)
+[![Build and test](https://github.com/StockSharp/JS-Grids/actions/workflows/ci.yml/badge.svg)](https://github.com/StockSharp/JS-Grids/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/%40stocksharp%2Fgrids.svg)](https://www.npmjs.com/package/@stocksharp/grids)
 [![License](https://img.shields.io/badge/license-StockSharp%20EULA-c8202f.svg)](LICENSE)
 
 **StockSharp JS Data Grid** is the browser table component behind StockSharp's
@@ -10,17 +10,17 @@ state and exported sheet, a `ColumnSettings` adapter for tables the server
 already rendered, and a dependency-free `.xlsx` writer.
 
 [StockSharp website](https://stocksharp.com/) ·
-[GitHub repository](https://github.com/StockSharp/Grids) ·
-[Issue tracker](https://github.com/StockSharp/Grids/issues)
+[GitHub repository](https://github.com/StockSharp/JS-Grids) ·
+[Issue tracker](https://github.com/StockSharp/JS-Grids/issues)
 
 ## Quick start
 
 ```sh
-npm install @stocksharp/grid
+npm install @stocksharp/grids
 ```
 
 ```ts
-import { DataGrid } from '@stocksharp/grid';
+import { DataGrid } from '@stocksharp/grids';
 
 interface Order { id: number; symbol: string; side: number; price: number; }
 
@@ -53,7 +53,7 @@ grid.download('orders', 'Orders');   // orders-20260807-120000.xlsx
 The package also ships a ready-to-use browser bundle exposed as `window.SSGrid`:
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@stocksharp/grid@0.1.0/dist/ssgrid.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@stocksharp/grids@0.1.0/dist/ssgrid.js"></script>
 <script>
   const { DataGrid } = window.SSGrid;
 </script>
@@ -114,7 +114,7 @@ It knows nothing about the page it is on — the dialog, the store and the
 affordance that opens the picker are all arguments:
 
 ```ts
-import { ColumnSettings } from '@stocksharp/grid';
+import { ColumnSettings } from '@stocksharp/grids';
 
 const settings = new ColumnSettings({
   table: document.querySelector<HTMLTableElement>('#users')!,
@@ -194,14 +194,14 @@ published inside the package:
 ```json
 {
   "dependencies": {
-    "@stocksharp/grid": "^0.1.0"
+    "@stocksharp/grids": "^0.1.0"
   }
 }
 ```
 
 ```ts
-import { DataGrid } from '@stocksharp/grid/source';
-import { TableExport } from '@stocksharp/grid/source/table-export';
+import { DataGrid } from '@stocksharp/grids/source';
+import { TableExport } from '@stocksharp/grids/source/table-export';
 ```
 
 `./source` exists for the case where there is nothing compiled to resolve.
@@ -219,10 +219,10 @@ identical either way.
 
 Dedicated entry points are available for consumers with narrower needs:
 
-- `@stocksharp/grid/data-grid` — the grid alone;
-- `@stocksharp/grid/table-sort` — sort state without a grid;
-- `@stocksharp/grid/column-settings` — the picker for a server-rendered table;
-- `@stocksharp/grid/table-export` — the workbook writer on its own.
+- `@stocksharp/grids/data-grid` — the grid alone;
+- `@stocksharp/grids/table-sort` — sort state without a grid;
+- `@stocksharp/grids/column-settings` — the picker for a server-rendered table;
+- `@stocksharp/grids/table-export` — the workbook writer on its own.
 
 ## Build output
 
