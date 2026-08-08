@@ -88,6 +88,12 @@ export class GridContextMenu {
         // listening depend on the event loop.
         const dismiss = (event: Event) => {
             if (event.type === 'keydown' && (event as KeyboardEvent).key !== 'Escape') return;
+            // A press INSIDE the menu is the user choosing something. This listener runs
+            // in the capture phase, before the click reaches the item, so closing here
+            // would tear the item out from under the gesture and the menu would look
+            // dead: it vanishes and nothing happens.
+            const target = (event as unknown as { target?: Node }).target;
+            if (event.type === 'mousedown' && target && el.contains(target)) return;
             this.close();
         };
         document.addEventListener('mousedown', dismiss, true);

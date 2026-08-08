@@ -91,6 +91,23 @@ describe('DataGrid context menu', () => {
         assert.match(labels(menu).join('|'), /Copy row/);
     });
 
+    it('survives the mousedown that precedes the click on an item', () => {
+        const { grid, body } = makeGrid();
+
+        rightClick(body, 0, 1);
+        const item = openMenu()!.children.find(el => el.textContent === 'Group by this column')!;
+
+        // A real pointer presses before it clicks, and the dismiss listener runs in the
+        // capture phase -- so a menu that closes on any mousedown removes the item
+        // before the click can reach it, and every entry silently does nothing. The
+        // synthetic click these tests used to send on its own never saw it.
+        fireOnDocument({ type: 'mousedown', target: item });
+        assert.notEqual(openMenu(), undefined, 'pressing inside the menu must not close it');
+
+        item.dispatchEvent({ type: 'click', target: item });
+        assert.equal(grid.groupedBy(), 'symbol');
+    });
+
     it('acts on the grid when an item is chosen, and closes first', () => {
         const { grid, body } = makeGrid();
 

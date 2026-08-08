@@ -182,6 +182,15 @@ export class FakeElement {
         return node;
     }
 
+    /// The menu asks whether a press landed inside itself, to tell a choice from a
+    /// dismissal.
+    contains(node: FakeNode | null): boolean {
+        for (let n: FakeNode | null = node; n; n = (n as FakeElement).parentNode) {
+            if ((n as unknown) === (this as unknown)) return true;
+        }
+        return false;
+    }
+
     /// The context menu takes itself back out of the body when it closes.
     removeChild<T extends FakeNode>(node: T): T {
         const at = this.childNodes.indexOf(node);
