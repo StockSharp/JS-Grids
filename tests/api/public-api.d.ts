@@ -139,6 +139,11 @@ export interface GridColumn<TRow> {
      * Whether the column appears in the exported sheet. An exportable column
      * must be able to produce a value (`value` or `exportValue`).
      */
+    /**
+     * Draw a filter for this column, of this kind. Omit it and the column is not
+     * filterable -- a filter row appears only once some column asks for one.
+     */
+    filter?: GridFilterKind;
     exportable: boolean;
     /**
      * Exported value, when it differs from `value`: the localized text the user
@@ -169,6 +174,45 @@ export interface GridPinnedRow {
 export interface GridExportData {
     headers: string[];
     rows: unknown[][];
+}
+/**
+ * Which control the grid draws for a column, and therefore how its filter reads:
+ * a substring box, a min/max pair, or a list of the values present.
+ */
+export type GridFilterKind = 'text' | 'number' | 'set';
+/**
+ * One column's filter. Plain data rather than a predicate, and deliberately so:
+ * a closure cannot be written to a store, so a grid filtered by one could never
+ * come back filtered the same way. Every field is optional; an object with none
+ * of them set means no filter at all.
+ */
+export interface GridFilter {
+    /** Matches anywhere in the value, case-insensitively. */
+    text?: string;
+    /** Inclusive bounds, each optional on its own. */
+    min?: number;
+    max?: number;
+    /** Exact matches against the value's text. */
+    values?: string[];
+}
+/**
+ * What the user arranged, and nothing the data decided. This is the whole of what
+ * a host has to store to bring a table back the way somebody left it: which
+ * columns, in what order, sorted by what.
+ *
+ * Every field is optional and every unknown column key is ignored on the way in,
+ * because a stored layout outlives the table it was stored from -- a column gets
+ * removed in a deploy and the saved view must still restore the rest rather than
+ * fault.
+ */
+export interface GridState {
+    /** Column keys in display order. Keys the caller leaves out keep their relative order, after these. */
+    order?: string[];
+    /** Column keys the user hid. They keep their place in `order` so unhiding restores the slot. */
+    hidden?: string[];
+    sort?: SortSpec | null;
+    /** By column key. Columns that are not filtered are absent rather than empty. */
+    filters?: Record<string, GridFilter>;
 }
 export interface GridOptions<TRow> {
     /** The `<thead>` the grid renders the header row into. Emptied on construction. */
@@ -211,11 +255,54 @@ export interface GridOptions<TRow> {
      * hold its own reference to the grid until the constructor returns.
      */
     afterRender?(): void;
+    /**
+     * Let the user drag a header to move its column. Off by default: a grid inside
+     * a form or a report has nothing to gain from it, and a draggable header is a
+     * mouse target that behaves differently from every other one on the page.
+     */
+    reorderable?: boolean;
+    /**
+     * Called whenever the user changes the arrangement -- moved a column, hid one,
+     * sorted. This is where a host persists it; `setState` deliberately does not
+     * fire it, or restoring a layout would write it straight back on every load.
+     */
+    onStateChange?(state: GridState): void;
 }
 export declare class DataGrid<TRow> {
     readonly options: GridOptions<TRow>;
     readonly sort: TableSort<TRow>;
     constructor(options: GridOptions<TRow>);
+    /** Every declared column in display order, hidden ones included. */
+    columnKeys(): string[];
+    /** The columns actually rendered, in the order they are rendered. */
+    visibleColumns(): GridColumn<TRow>[];
+    isColumnHidden(key: string): boolean;
+    /**
+     * Put the columns in this order. Keys the caller leaves out keep their relative
+     * order behind the ones named -- a layout stored before a column existed must
+     * not make that column disappear.
+     */
+    setColumnOrder(keys: string[]): void;
+    hideColumn(key: string): void;
+    showColumn(key: string): void;
+    /** The filters in effect, by column key. Columns with none are absent. */
+    filters(): Record<string, GridFilter>;
+    /**
+     * Filter a column, or pass null to stop filtering it. A filter with nothing set
+     * -- a text box the user emptied -- is the same as null, so clearing an input
+     * brings the rows back instead of matching nothing.
+     */
+    setFilter(key: string, filter: GridFilter | null): void;
+    clearFilters(): void;
+    /** The held rows that pass every filter, in the order they were handed over. */
+    filteredRows(): TRow[];
+    /** The arrangement, as a host would store it. */
+    getState(): GridState;
+    /**
+     * Restore an arrangement. Unknown column keys are dropped rather than rejected:
+     * a view stored before a deploy has to survive one.
+     */
+    setState(state: GridState): void;
     /**
      * The rows the grid holds, in the order they were handed over. The grid keeps
      * the caller's array by reference: a caller that merges a live delta into it
@@ -247,6 +334,25 @@ export declare class DataGrid<TRow> {
     exportData(): GridExportData;
     /** Export to `<baseName>-<timestamp>.xlsx` in the order on screen. */
     download(baseName: string, sheetName: string): void;
+    /**
+     * The row of filter controls, or null when no visible column declares one.
+     *
+     * Every visible column gets a cell even when it has no filter, or the row would
+     * shear away from the captions above it. The cells carry no `data-sort`, so a
+     * click inside one does not reach the sort handler bound on the `<thead>`.
+     */
+    /**
+     * Put the stored filters back into the controls without rebuilding the row.
+     * Rebuilding it would take the focus and the caret out of the box the user is
+     * still typing in.
+     */
+    /**
+     * Drag a header to move its column in front of the one it is dropped on.
+     *
+     * The dragged key lives on the instance rather than in dataTransfer: the payload
+     * is this grid's, and reading it back out of the event would mean a header
+     * dragged from anywhere -- another grid, another window -- could reorder this one.
+     */
 }
 
 // FILE: index.d.ts
@@ -292,4 +398,21 @@ export declare class TableSort<TRow = unknown> {
      * reordered must be able to rely on that for one row and no sort as much as for a sorted many.
      */
     apply(rows: TRow[]): TRow[];
+    /**
+     * The column the user picked, or null while the table's own default is in effect.
+     *
+     * Deliberately not the effective sort: this is what gets stored and handed back
+     * to `set`, and storing the default as though it were a choice would pin it --
+     * a later change to the table's default would then never reach anyone who had
+     * ever looked at the table.
+     */
+    current(): SortSpec | null;
+    /** Pick a column, or pass null to fall back to the table's default. */
+    set(col: string | null, dir: SortDir | null): void;
+    /**
+     * Re-mark the header cells. A grid that rebuilds its `<thead>` -- moving a column,
+     * hiding one -- throws away the marks with the old cells, and the rows would then
+     * sit sorted under a header that says nothing about why.
+     */
+    refreshHeader(): void;
 }

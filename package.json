@@ -75,6 +75,7 @@
   },
   "scripts": {
     "build": "node build.mjs",
+    "serve": "node serve.mjs",
     "prepack": "npm run build",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.test.json",
     "api:check": "node tools/check-public-api.mjs",

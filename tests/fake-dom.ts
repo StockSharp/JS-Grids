@@ -19,6 +19,9 @@
 export interface FakeEvent {
     type: string;
     target?: FakeElement;
+    /// Drag handling calls it to accept a drop; a test that wants to assert the
+    /// call passes its own spy, and one that does not can leave it out.
+    preventDefault?(): void;
 }
 
 type FakeListener = (event: FakeEvent) => void;
@@ -87,6 +90,8 @@ export class FakeElement {
     href = '';
     download = '';
     checked = false;
+    /// Inputs and selects the grid renders for its filter row read and write this.
+    value = '';
     disabled = false;
     colSpan = 1;
     readonly _listeners = new Map<string, FakeListener[]>();

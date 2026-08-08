@@ -103,6 +103,35 @@ export class TableSort<TRow = unknown> {
         return String(a).localeCompare(String(b));
     }
 
+    /**
+     * The column the user picked, or null while the table's own default is in effect.
+     *
+     * Deliberately not the effective sort: this is what gets stored and handed back
+     * to `set`, and storing the default as though it were a choice would pin it --
+     * a later change to the table's default would then never reach anyone who had
+     * ever looked at the table.
+     */
+    current(): SortSpec | null {
+        return this.col ? { col: this.col, dir: this.dir } : null;
+    }
+
+    /** Pick a column, or pass null to fall back to the table's default. */
+    set(col: string | null, dir: SortDir | null): void {
+        this.col = col;
+        this.dir = dir || SortDirections.Asc;
+        this._updateHeader();
+        this._onChange();
+    }
+
+    /**
+     * Re-mark the header cells. A grid that rebuilds its `<thead>` -- moving a column,
+     * hiding one -- throws away the marks with the old cells, and the rows would then
+     * sit sorted under a header that says nothing about why.
+     */
+    refreshHeader(): void {
+        this._updateHeader();
+    }
+
     private _updateHeader() {
         if (!this._headerEl) return;
         // Reflect the effective sort — including the table default — so the resting view shows why
