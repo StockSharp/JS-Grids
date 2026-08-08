@@ -355,3 +355,40 @@ tr.sel td { background: #1d2a3d; }
 }
 
 .grid-filter-dialog-actions button:hover { border-color: var(--t-accent); }
+
+/* ---------------------------------------------------------------------------
+   Narrow screens. The page is a table beside a 340px explainer, which on a phone
+   left the table 46 pixels wide and pushed the document to 1258 — so below this
+   width the two stack, and the table gets the whole of it and scrolls sideways
+   on its own instead of dragging the page with it.
+   --------------------------------------------------------------------------- */
+@media (max-width: 820px) {
+  .wrap { flex-direction: column; }
+
+  .side {
+    width: auto;
+    flex: none;
+    border-left: none;
+    border-top: 1px solid var(--t-border);
+    overflow-y: visible;
+  }
+
+  /* The explainer sits under the data rather than competing with it for width. */
+  .side-block.grow { min-height: 0; }
+
+  .grid-panel { min-height: 60vh; }
+
+  /* Sideways scrolling belongs to the table, not to the document: a page that
+     scrolls horizontally moves its own toolbar and heading out of view. */
+  .table-scroll { overflow-x: auto; }
+
+  .toolbar { flex-wrap: wrap; height: auto; padding: 8px 10px; }
+  .lede { padding: 10px 12px; font-size: 13px; }
+  .demo-header { padding: 0 10px; }
+
+  .blotter { font-size: 11px; }
+  .blotter th, .blotter td { padding-left: 6px; padding-right: 6px; }
+
+  /* A popup pinned to a pointer has nowhere to go on a 390px screen. */
+  .grid-menu, .grid-filter-dialog { max-width: calc(100vw - 24px); }
+}
