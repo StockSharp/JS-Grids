@@ -404,6 +404,14 @@ export interface GridOptions<TRow> {
     selectedClass?: string;
     onSelectionChange?(keys: string[]): void;
     /**
+     * Class put on a row whose key was not on screen the render before — how a live
+     * tape flashes its newest prints without the host patching cells after every
+     * render. The first paint never flashes: a seeded table is history, not news.
+     * The class lives until the next repaint, so the host's CSS animation runs once
+     * per arrival. The name is the host's, like every other look here.
+     */
+    flashNewClass?: string;
+    /**
      * Offer a context menu on right-click. `true` takes the grid's own; an object
      * keeps it and lets the host restyle, reword or rewrite the items.
      */
@@ -438,6 +446,10 @@ export class DataGrid<TRow> {
     private _selected: Set<string>;
     /// Where a shift-click measures its range from.
     private _anchorKey: string | null;
+    // The keys on screen at the previous paint, for `flashNewClass`. Null until
+    // the first paint has happened — nothing was on screen yet, so nothing is
+    // news — and left null entirely while the option is off.
+    private _flashKnown: Set<string> | null;
     private _menu: GridContextMenu | null;
     private _dragging: boolean;
     /// One collator for the whole grid: the sort, the group order, the option list a
@@ -476,6 +488,7 @@ export class DataGrid<TRow> {
         this._collapsed = new Set();
         this._selected = new Set();
         this._anchorKey = null;
+        this._flashKnown = null;
         this._menu = null;
         this._filterDialog = null;
         this._dragging = false;
@@ -881,6 +894,16 @@ export class DataGrid<TRow> {
         return this.displayRows().filter(row => this._selected.has(this.options.rowKey(row)));
     }
 
+    /**
+     * Forget the flash baseline: the next paint reads as a fresh seed and
+     * flashes nothing. For a host that replaces its rows wholesale — a tape
+     * moving to another instrument is a new history, not fifty arrivals at
+     * once.
+     */
+    flashReset(): void {
+        this._flashKnown = null;
+    }
+
     setSelection(keys: string[]): void {
         this._replaceSelection(new Set(keys));
     }
@@ -1195,6 +1218,17 @@ export class DataGrid<TRow> {
         }
 
         this.options.body.replaceChildren(...children);
+
+        // What this paint showed becomes the baseline the next one flashes
+        // against. Display keys rather than painted ones: a row past
+        // `renderLimit` is held, not news, and must not flash when a later
+        // paint reaches it. Unarmed until something has actually been on
+        // screen — the constructor paints an empty table before any data
+        // arrives, and the seed that follows is history, not news.
+        if (this.options.flashNewClass) {
+            const keys = this.displayRows().map(row => this.options.rowKey(row));
+            if (this._flashKnown !== null || keys.length > 0) this._flashKnown = new Set(keys);
+        }
     }
 
     /**
@@ -1446,6 +1480,12 @@ export class DataGrid<TRow> {
         if (this._selected.has(key)) {
             const selectedClass = this.options.selectedClass || 'is-selected';
             tr.className = tr.className ? `${tr.className} ${selectedClass}` : selectedClass;
+        }
+        // News since the previous paint. The check runs against the set as it
+        // was BEFORE this paint started — `_paint` replaces it only after every
+        // row is built.
+        if (this.options.flashNewClass && this._flashKnown !== null && !this._flashKnown.has(key)) {
+            tr.className = tr.className ? `${tr.className} ${this.options.flashNewClass}` : this.options.flashNewClass;
         }
         const mode = this.options.selection || 'none';
         if (mode !== 'none') {

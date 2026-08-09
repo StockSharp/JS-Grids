@@ -438,6 +438,14 @@ export interface GridOptions<TRow> {
     selectedClass?: string;
     onSelectionChange?(keys: string[]): void;
     /**
+     * Class put on a row whose key was not on screen the render before — how a live
+     * tape flashes its newest prints without the host patching cells after every
+     * render. The first paint never flashes: a seeded table is history, not news.
+     * The class lives until the next repaint, so the host's CSS animation runs once
+     * per arrival. The name is the host's, like every other look here.
+     */
+    flashNewClass?: string;
+    /**
      * Offer a context menu on right-click. `true` takes the grid's own; an object
      * keeps it and lets the host restyle, reword or rewrite the items.
      */
@@ -497,6 +505,13 @@ export declare class DataGrid<TRow> {
     selectedKeys(): string[];
     /** The selected rows that are actually on screen. */
     selectedRows(): TRow[];
+    /**
+     * Forget the flash baseline: the next paint reads as a fresh seed and
+     * flashes nothing. For a host that replaces its rows wholesale — a tape
+     * moving to another instrument is a new history, not fifty arrivals at
+     * once.
+     */
+    flashReset(): void;
     setSelection(keys: string[]): void;
     clearSelection(): void;
     /**

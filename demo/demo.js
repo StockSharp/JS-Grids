@@ -243,6 +243,9 @@
         // Ctrl adds, shift takes a range -- measured against the order on screen.
         selection: 'multi',
         selectedClass: 'sel',
+        // A row whose key was not on screen the render before flashes once --
+        // the live feed below inserts a fresh order now and then to show it.
+        flashNewClass: 'flash-new',
         onSelectionChange: function (keys) {
             document.getElementById('selCount').textContent = keys.length ? keys.length + T.page.selected : T.page.noneSelected;
         },
@@ -434,6 +437,9 @@
     });
 
     // Mutate the array the grid holds and repaint — the documented live-update path.
+    var nextOrderId = 3200;
+    var ticksToArrival = 3;
+
     function tick() {
         for (var i = 0; i < 6; i++) {
             var o = held[Math.floor(Math.random() * held.length)];
@@ -444,6 +450,24 @@
             o.last = next;
             reprice(o);
         }
+
+        // Now and then a fresh order arrives, and the grid's flashNewClass is
+        // what marks it — nobody here patches a cell for it.
+        if (held.length > 0 && --ticksToArrival <= 0) {
+            ticksToArrival = 3 + Math.floor(Math.random() * 3);
+            var template = held[Math.floor(Math.random() * held.length)];
+            var arrival = {
+                id: ++nextOrderId,
+                time: new Date().toTimeString().slice(0, 8),
+                symbol: template.symbol, board: template.board,
+                side: Math.random() < 0.5 ? 0 : 1, type: 'Limit',
+                qty: template.qty, price: template.last, filled: 0,
+                last: template.last, state: 'Active', dec: template.dec, mult: template.mult
+            };
+            reprice(arrival);
+            held.unshift(arrival);
+        }
+
         grid.render();
     }
 

@@ -176,6 +176,10 @@ code { color: var(--t-accent); }
 .blotter td.flash-up { animation: flashUp 1s ease-out; }
 .blotter td.flash-down { animation: flashDown 1s ease-out; }
 
+/* A row that was not on screen the render before — the grid's flashNewClass
+   names it, this page decides what an arrival looks like. */
+.blotter tr.flash-new td { animation: flashUp 1s ease-out; }
+
 /* -------------------------------------------------------------------- modal -- */
 .modal {
     position: fixed; inset: 0; z-index: 1050; display: none;
