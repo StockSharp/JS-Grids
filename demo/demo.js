@@ -77,76 +77,91 @@
         return o.state === 'Active' || o.state === 'Partial';
     }
 
+    // ---------------------------------------------------------------- language
+    // One dictionary at a time. Everything the page says -- and everything the grid
+    // would otherwise say in English -- is read from it.
+    var T = SSDemoText.en;
+
     // ------------------------------------------------------------------- columns
-    // Declared once: the header cell, the body cell, the sort accessor and the
-    // exported column all come from these objects.
-    var COLUMNS = [
-        { key: 'id', header: 'ID', headerClass: 'num', exportable: true, filter: 'number', value: function (o) { return o.id; }, cellClass: function () { return 'num dim'; } },
-        { key: 'time', header: 'Time', exportable: true, filter: 'text', value: function (o) { return o.time; }, cellClass: function () { return 'num dim'; } },
-        { key: 'symbol', header: 'Symbol', exportable: true, filter: 'text', value: function (o) { return o.symbol; }, cellClass: function () { return 'sym'; } },
-        { key: 'board', header: 'Board', exportable: true, filter: 'set', value: function (o) { return o.board; }, cellClass: function () { return 'dim'; } },
+    // Built from the dictionary rather than declared once, because a header is text
+    // and text has a language. The keys never move: the saved view is written in
+    // them, so it survives a switch.
+    function buildColumns() { return [
+        { key: 'id', header: T.columns.id, headerClass: 'num', exportable: true, filter: 'number', value: function (o) { return o.id; }, cellClass: function () { return 'num dim'; } },
+        { key: 'time', header: T.columns.time, exportable: true, filter: 'text', value: function (o) { return o.time; }, cellClass: function () { return 'num dim'; } },
+        { key: 'symbol', header: T.columns.symbol, exportable: true, filter: 'text', value: function (o) { return o.symbol; }, cellClass: function () { return 'sym'; } },
+        { key: 'board', header: T.columns.board, exportable: true, filter: 'set', value: function (o) { return o.board; }, cellClass: function () { return 'dim'; } },
         {
-            key: 'side', header: 'Side', exportable: true, filter: 'set',
+            key: 'side', header: T.columns.side, exportable: true, filter: 'set',
             // Held as 0/1 and read as Buy/Sell: `value` sorts and filters, `text` is
             // what a group header and the filter's value list say.
             value: function (o) { return o.side; },
-            text: function (o) { return o.side === 0 ? 'Buy' : 'Sell'; },
-            render: function (o) { return o.side === 0 ? 'Buy' : 'Sell'; },
+            text: function (o) { return T.values.side[o.side]; },
+            render: function (o) { return T.values.side[o.side]; },
             cellClass: function (o) { return o.side === 0 ? 'side-buy' : 'side-sell'; },
-            exportValue: function (o) { return o.side === 0 ? 'Buy' : 'Sell'; }
+            exportValue: function (o) { return T.values.side[o.side]; }
         },
-        { key: 'type', header: 'Type', exportable: true, filter: 'set', value: function (o) { return o.type; }, cellClass: function () { return 'dim'; } },
         {
-            key: 'qty', header: 'Qty', headerClass: 'num', exportable: true, filter: 'number',
+            key: 'type', header: T.columns.type, exportable: true, filter: 'set',
+            value: function (o) { return o.type; },
+            text: function (o) { return T.values.type[o.type]; },
+            render: function (o) { return T.values.type[o.type]; },
+            exportValue: function (o) { return T.values.type[o.type]; },
+            cellClass: function () { return 'dim'; }
+        },
+        {
+            key: 'qty', header: T.columns.qty, headerClass: 'num', exportable: true, filter: 'number',
             value: function (o) { return o.qty; },
             render: function (o) { return qtyText(o.qty); },
             cellClass: function () { return 'num'; }
         },
         {
-            key: 'price', header: 'Price', headerClass: 'num', exportable: true, filter: 'number',
+            key: 'price', header: T.columns.price, headerClass: 'num', exportable: true, filter: 'number',
             value: function (o) { return o.price; },
             render: function (o) { return fixed(o.price, o.dec); },
             cellClass: function () { return 'num'; }
         },
         {
-            key: 'filled', header: 'Filled', headerClass: 'num', exportable: true,
+            key: 'filled', header: T.columns.filled, headerClass: 'num', exportable: true,
             value: function (o) { return o.filled; },
             render: function (o) { return qtyText(o.filled) + ' / ' + qtyText(o.qty); },
             cellClass: function (o) { return o.filled === 0 ? 'num dim' : o.filled < o.qty ? 'num part' : 'num'; }
         },
         {
-            key: 'last', header: 'Last', headerClass: 'num', exportable: true,
+            key: 'last', header: T.columns.last, headerClass: 'num', exportable: true,
             value: function (o) { return o.last; },
             render: function (o) { return fixed(o.last, o.dec); },
             cellClass: function () { return 'num'; }
         },
         {
-            key: 'pnl', header: 'P&L', headerClass: 'num', exportable: true, filter: 'number',
+            key: 'pnl', header: T.columns.pnl, headerClass: 'num', exportable: true, filter: 'number',
             value: function (o) { return o.pnl; },
             render: function (o) { return signed(o.pnl); },
             cellClass: function (o) { return 'num ' + pnlClass(o.pnl); }
         },
         {
-            key: 'state', header: 'State', exportable: true, filter: 'set',
+            key: 'state', header: T.columns.state, exportable: true, filter: 'set',
             value: function (o) { return o.state; },
+            text: function (o) { return T.values.state[o.state]; },
             // A Node, not a string: the cell holds a real element the host styles.
             render: function (o) {
                 var badge = document.createElement('span');
                 badge.className = 'badge badge-' + o.state.toLowerCase();
-                badge.textContent = o.state;
+                badge.textContent = T.values.state[o.state];
                 return badge;
-            }
+            },
+            exportValue: function (o) { return T.values.state[o.state]; }
         },
         {
             // No value(): nothing to sort by, so the grid leaves this header inert.
-            key: 'actions', header: 'Actions', headerHidden: true, headerClass: 'act', exportable: false,
+            key: 'actions', header: T.columns.actions, headerHidden: true, headerClass: 'act', exportable: false,
             cellClass: function () { return 'act'; },
             render: function (o) {
                 if (!isWorking(o)) return '';
                 var btn = document.createElement('button');
                 btn.type = 'button';
                 btn.className = 'rowbtn';
-                btn.textContent = 'Cancel';
+                btn.textContent = T.page.cancelButton;
                 btn.addEventListener('click', function (e) {
                     e.stopPropagation();          // the row below has its own click
                     cancel(o.id);
@@ -154,7 +169,9 @@
                 return btn;
             }
         }
-    ];
+    ]; }
+
+    var COLUMNS = buildColumns();
 
     function cancel(id) {
         var order = held.find(function (o) { return o.id === id; });
@@ -185,7 +202,7 @@
             cells: pinnedCells({
                 id: { content: 'Σ', className: 'num dim' },
                 symbol: { content: label, className: 'pin-label' },
-                board: { content: rows.length + ' orders', className: 'dim' },
+                board: { content: rows.length + T.page.orders, className: 'dim' },
                 qty: { content: qtyText(round(sum(rows, 'qty'), 4)), className: 'num' },
                 filled: { content: qtyText(round(sum(rows, 'filled'), 4)), className: 'num' },
                 pnl: { content: signed(pnl), className: 'num ' + pnlClass(pnl) }
@@ -196,8 +213,8 @@
     function pinnedRows() {
         if (!held.length) return [];      // let the grid show its emptyText instead
         return [
-            totalsRow('pinned-working', 'WORKING', held.filter(isWorking), GridPinnedPlacements.Top),
-            totalsRow('pinned-all', 'ALL ORDERS', held, GridPinnedPlacements.Bottom)
+            totalsRow('pinned-working', T.page.working, held.filter(isWorking), GridPinnedPlacements.Top),
+            totalsRow('pinned-all', T.page.allOrders, held, GridPinnedPlacements.Bottom)
         ];
     }
 
@@ -214,7 +231,10 @@
         columns: COLUMNS,
         defaultSort: { col: 'id', dir: SortDirections.Desc },
         rowKey: function (o) { return String(o.id); },
-        emptyText: 'No orders',
+        emptyText: T.grid.empty,
+        // Text order is a language's business: without this the table would sort by
+        // whatever locale the visitor's browser happens to be set to.
+        locale: T.htmlLang,
         // Drag a header to move its column.
         reorderable: true,
         // The row of boxes stays available from the menu, but the rule dialog is the
@@ -224,13 +244,18 @@
         selection: 'multi',
         selectedClass: 'sel',
         onSelectionChange: function (keys) {
-            document.getElementById('selCount').textContent = keys.length ? keys.length + ' selected' : 'none selected';
+            document.getElementById('selCount').textContent = keys.length ? keys.length + T.page.selected : T.page.noneSelected;
         },
         // The grid's own menu, with one host line added in front of it.
         contextMenu: {
+            // The package draws the menu and the filter popup, and takes every word in
+            // them from here -- which is the whole of what a host has to translate to
+            // run the grid in another language.
+            labels: T.grid.menu,
+            filterDialog: { labels: T.grid.filter },
             items: function (context, defaults) {
                 if (!context.row) return defaults;
-                return [{ label: 'Cancel order #' + context.row.id, run: function () { cancel(context.row.id); } }, {}]
+                return [{ label: T.page.cancelOrder + context.row.id, run: function () { cancel(context.row.id); } }, {}]
                     .concat(defaults);
             }
         },
@@ -254,7 +279,7 @@
     document.getElementById('btnGroup').addEventListener('click', function () {
         var on = grid.groupedBy() !== null;
         grid.groupBy(on ? null : 'board');
-        this.textContent = on ? 'Group by board' : 'Ungroup';
+        this.textContent = on ? T.page.groupOn : T.page.groupOff;
     });
 
     document.getElementById('btnFilters').addEventListener('click', function () {
@@ -278,7 +303,7 @@
     // the page defines, and the grid never learns it happened.
     document.getElementById('btnTheme').addEventListener('click', function () {
         var light = document.documentElement.classList.toggle('light');
-        this.textContent = light ? '☾ Dark' : '☀ Light';
+        this.textContent = light ? T.page.themeDark : T.page.themeLight;
     });
 
     // --------------------------------------------------------- the column picker
@@ -317,8 +342,8 @@
 
             li.appendChild(toggle);
             li.appendChild(label);
-            li.appendChild(moveButton(i, -1, 'Move up', 'ico ico-up'));
-            li.appendChild(moveButton(i, 1, 'Move down', 'ico ico-down'));
+            li.appendChild(moveButton(i, -1, T.page.moveUp, 'ico ico-up'));
+            li.appendChild(moveButton(i, 1, T.page.moveDown, 'ico ico-down'));
             return li;
         }));
     }
@@ -342,9 +367,9 @@
         var shown = grid.columnKeys().filter(function (k) { return !grid.isColumnHidden(k); });
         var isDefault = shown.length === COLUMNS.length
             && shown.every(function (k, i) { return k === COLUMNS[i].key; });
-        layoutNote.textContent = 'layout: ';
+        layoutNote.textContent = T.page.layout;
         var b = document.createElement('b');
-        b.textContent = isDefault ? 'table default' : shown.join(', ');
+        b.textContent = isDefault ? T.page.layoutDefault : shown.join(', ');
         layoutNote.appendChild(b);
     }
 
@@ -386,14 +411,13 @@
 
         var data = grid.exportData();
         var painted = options.body.querySelectorAll('tr[data-row-key]:not(.pinned)').length;
-        status.textContent = 'painted ' + painted + ' of ' + grid.rows.length + ' held rows'
-            + '  ·  sheet ' + data.rows.length + ' rows × ' + data.headers.length + ' columns'
-            + '  ·  sort ' + (grid.sort.col ? grid.sort.col + ' ' + grid.sort.dir : 'default (id desc)');
+        status.textContent = T.page.status(painted, grid.rows.length, data.rows.length, data.headers.length,
+            grid.sort.col ? T.page.sortBy(grid.sort.col, grid.sort.dir) : T.page.sortDefault);
 
         sheetRows.textContent = data.rows.length;
         preview.textContent = [data.headers.join(' | ')]
             .concat(data.rows.slice(0, 8).map(function (row) { return row.join(' | '); }))
-            .concat(data.rows.length > 8 ? ['… ' + (data.rows.length - 8) + ' more'] : [])
+            .concat(data.rows.length > 8 ? [T.page.more(data.rows.length - 8)] : [])
             .join('\n');
     }
 
@@ -434,7 +458,7 @@
     btnClear.addEventListener('click', function () {
         var empty = grid.rows.length > 0;
         held = empty ? [] : orders;
-        btnClear.textContent = empty ? 'Restore rows' : 'Clear rows';
+        btnClear.textContent = empty ? T.page.restoreRows : T.page.clearRows;
         toggle(btnClear, empty);
         grid.setRows(held);
     });
@@ -446,17 +470,93 @@
     // The workbook writer on its own: a sheet with no grid behind it.
     document.getElementById('btnSummary').addEventListener('click', function () {
         var buckets = [
-            ['Working', held.filter(isWorking)],
-            ['All orders', held]
+            [T.page.working, held.filter(isWorking)],
+            [T.page.allOrders, held]
         ];
-        TableExport.download('orders-summary', 'Summary',
-            ['Bucket', 'Orders', 'Qty', 'Filled', 'P&L'],
+        TableExport.download('orders-summary', T.page.summarySheet,
+            [T.page.bucket, T.page.ordersHeader, T.columns.qty, T.columns.filled, T.columns.pnl],
             buckets.map(function (b) {
                 return [b[0], b[1].length, round(sum(b[1], 'qty'), 4), round(sum(b[1], 'filled'), 4), round(sum(b[1], 'pnl'), 2)];
             }));
     });
 
+    // -------------------------------------------------------------- the language
+    // What a switch has to do, and what it must not touch.
+    //
+    // The grid takes its columns once, so translated headers mean a NEW grid over the
+    // same table -- which is why DataGrid has destroy(): the old one would go on
+    // answering Ctrl+C otherwise. Everything the user arranged rides across in
+    // getState(), and it works precisely because that state is written in column keys
+    // and raw values rather than in anything on screen: a table grouped by side and
+    // filtered to Sell comes back grouped and filtered, now reading 卖出.
+    function paintChrome() {
+        var page = T.page;
+        document.documentElement.lang = T.htmlLang;
+        document.title = page.title;
+        document.getElementById('headScript').innerHTML = page.headScript;
+        document.getElementById('lede').innerHTML = page.lede;
+        document.getElementById('btnLang').textContent = T.switchTo;
+        document.getElementById('btnTheme').textContent =
+            document.documentElement.classList.contains('light') ? page.themeDark : page.themeLight;
+        document.getElementById('btnColumns').textContent = page.columns;
+        document.getElementById('btnLimit').textContent = options.renderLimit ? page.limit + options.renderLimit : page.limitOff;
+        document.getElementById('btnClear').textContent = grid.rows.length ? page.clearRows : page.restoreRows;
+        document.getElementById('btnGroup').textContent = grid.groupedBy() ? page.groupOff : page.groupOn;
+        document.getElementById('btnFilterRow').textContent = page.filterRow;
+        document.getElementById('btnFilters').textContent = page.clearFilters;
+        document.getElementById('btnRestore').textContent = page.restore;
+        document.getElementById('btnSummary').textContent = page.summary;
+        document.getElementById('btnExport').textContent = page.download;
+        document.getElementById('selCount').textContent = grid.selectedKeys().length
+            ? grid.selectedKeys().length + page.selected : page.noneSelected;
+        document.getElementById('liveHere').textContent = page.liveHere;
+        document.getElementById('hints').replaceChildren.apply(
+            document.getElementById('hints'),
+            page.hints.map(function (html) {
+                var li = document.createElement('li');
+                li.innerHTML = html;
+                return li;
+            }));
+        document.getElementById('stateTitle').textContent = page.stateTitle;
+        document.getElementById('exportTitle').textContent = page.exportTitle;
+        document.getElementById('exportNote').innerHTML = page.exportNote;
+        document.getElementById('modalTitle').textContent = page.modalTitle;
+        document.getElementById('colClose').setAttribute('aria-label', page.modalClose);
+        document.getElementById('colReset').textContent = page.modalReset;
+        document.getElementById('colApply').textContent = page.modalApply;
+
+        var live = document.getElementById('btnLive');
+        live.replaceChildren(Object.assign(document.createElement('span'), { className: 'dot' }),
+            document.createTextNode(page.live));
+        showLayout();
+    }
+
+    function setLanguage(code) {
+        var state = grid.getState();
+        var selected = grid.selectedKeys();
+
+        T = SSDemoText[code];
+        COLUMNS = buildColumns();
+        options.columns = COLUMNS;
+        options.emptyText = T.grid.empty;
+        options.locale = T.htmlLang;
+        options.contextMenu.labels = T.grid.menu;
+        options.contextMenu.filterDialog = { labels: T.grid.filter };
+
+        grid.destroy();
+        grid = new DataGrid(options);
+        grid.setRows(held);
+        grid.setState(state);
+        grid.setSelection(selected);
+        paintChrome();
+    }
+
+    document.getElementById('btnLang').addEventListener('click', function () {
+        setLanguage(T.code === 'en' ? 'zh' : 'en');
+    });
+
     // ----------------------------------------------------------------- first paint
     held = orders;
     grid.setRows(held);
+    paintChrome();
 })();

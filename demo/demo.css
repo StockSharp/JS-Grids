@@ -70,7 +70,9 @@ code { color: var(--t-accent); }
 .grid-panel { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--t-panel); }
 
 .toolbar {
-    display: flex; align-items: center; gap: 8px; padding: 10px 12px; flex: none;
+    /* Wraps rather than overflows: a translated label is a different width, and the
+       row of buttons has to survive the longest one. */
+    display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 10px 12px; flex: none;
     border-bottom: 1px solid var(--t-border); background: var(--t-header);
 }
 .table-scroll { flex: 1; min-height: 0; overflow: auto; }
@@ -90,7 +92,13 @@ code { color: var(--t-accent); }
     font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
     color: var(--t-text-dim); margin-bottom: 10px; display: flex; align-items: center; gap: 8px;
 }
-.pill { background: var(--t-accent); color: #fff; border-radius: 10px; padding: 0 7px; font-size: 11px; line-height: 17px; }
+.pill {
+    background: var(--t-accent); color: #fff; border-radius: 10px; padding: 0 7px;
+    font-size: 11px; line-height: 17px;
+    /* Latin text has spaces to break at and Chinese does not, so without this the
+       pill breaks between characters and grows into a vertical column. */
+    white-space: nowrap;
+}
 .hint { margin: 0; padding-left: 16px; font-size: 12px; line-height: 1.75; color: var(--t-text); }
 .hint b { color: var(--t-text-bright); }
 .note { margin: 12px 0 0; font-size: 11.5px; line-height: 1.6; color: var(--t-text-dim); }
