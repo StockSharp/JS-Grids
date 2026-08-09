@@ -246,6 +246,44 @@ describe('DataGrid context menu', () => {
         assert.equal(fakeDocument.clipboard.includes('BTC'), true);
         assert.equal(fakeDocument.clipboard.includes(String.fromCharCode(10)), false);
     });
+
+    it('filters by the value under the pointer, naming it the way the cell does', () => {
+        // Its own grid: a side column held as 0/1 and read as Buy/Sell -- the shape
+        // every enum column has. Adding it to the shared one would change what the
+        // tests about filters and hidden columns are even asking.
+        const head = new FakeElement('thead');
+        const body = new FakeElement('tbody');
+        const grid = new DataGrid<Row>({
+            head: asDom(head),
+            body: asDom(body),
+            columns: [
+                { key: 'id', header: 'ID', exportable: true, value: r => r.id },
+                {
+                    key: 'side', header: 'Side', exportable: true, filter: 'set',
+                    value: r => (r.qty > 0 ? 0 : 1),
+                    text: r => (r.qty > 0 ? 'Buy' : 'Sell'),
+                },
+            ],
+            defaultSort: { col: 'id', dir: 'asc' },
+            rowKey: r => String(r.id),
+            emptyText: 'No rows',
+            contextMenu: true,
+        });
+        grid.setRows(ROWS);
+
+        rightClick(body, 0, 1);   // the side cell of the first row
+
+        const item = openMenu()!.children.find(el => (el.textContent || '').startsWith('Filter by this value'))!;
+        // Named by the label, because that is what the user sees in the cell.
+        assert.equal(item.textContent, 'Filter by this value: Buy');
+
+        item.dispatchEvent({ type: 'click', target: item });
+
+        // ...and filtering by the value, because that is what the column holds. Taking
+        // the label for both compared "Buy" against 0 and left the table empty.
+        assert.deepEqual(grid.filters(), { side: { op: 'anyOf', values: ['0'] } });
+        assert.deepEqual(grid.displayRows().map(r => r.id), [1]);
+    });
 });
 
 describe('GridContextMenu', () => {

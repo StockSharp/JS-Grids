@@ -10,7 +10,7 @@
 /// host would otherwise write the same positioning and dismissal, and the host
 /// decides its class names and its wording.
 
-import type { GridFilter, GridFilterKind, GridFilterOp } from './data-grid.js';
+import type { GridFilter, GridFilterKind, GridFilterOp, GridValueOption } from './data-grid.js';
 
 /** Class names for the dialog's parts. */
 export interface GridFilterDialogClasses {
@@ -19,6 +19,10 @@ export interface GridFilterDialogClasses {
     row?: string;
     select?: string;
     input?: string;
+    /** The scrolling list of values a set filter is picked from. */
+    values?: string;
+    /** One tickable value in that list. */
+    valuesItem?: string;
     actions?: string;
     apply?: string;
     clear?: string;
@@ -42,6 +46,8 @@ const DEFAULT_CLASSES: Required<GridFilterDialogClasses> = {
     row: 'grid-filter-dialog-row',
     select: 'grid-filter-dialog-op',
     input: 'grid-filter-dialog-value',
+    values: 'grid-filter-dialog-values',
+    valuesItem: 'grid-filter-dialog-values-item',
     actions: 'grid-filter-dialog-actions',
     apply: 'grid-filter-dialog-apply',
     clear: 'grid-filter-dialog-clear',
@@ -67,6 +73,8 @@ const DEFAULT_LABELS: GridFilterDialogLabels = {
         lt: '<',
         le: '≤',
         between: 'between',
+        anyOf: 'is any of',
+        noneOf: 'is none of',
         empty: 'is empty',
         notEmpty: 'is not empty',
     },
@@ -78,10 +86,14 @@ const DEFAULT_LABELS: GridFilterDialogLabels = {
 const OPS: Record<GridFilterKind, GridFilterOp[]> = {
     text: ['contains', 'notContains', 'startsWith', 'endsWith', 'eq', 'ne', 'empty', 'notEmpty'],
     number: ['eq', 'ne', 'gt', 'ge', 'lt', 'le', 'between', 'empty', 'notEmpty'],
-    set: ['eq', 'ne', 'contains', 'empty', 'notEmpty'],
+    // A set column holds one of a handful of values, and the values are on screen to
+    // be ticked. Asking such a column to be typed at is how a filter on a side column
+    // ends up comparing "Buy" against the 0 the column actually holds.
+    set: ['anyOf', 'noneOf', 'empty', 'notEmpty'],
 };
 
 const NEEDS_NO_OPERAND = new Set<GridFilterOp>(['empty', 'notEmpty']);
+const PICKS_VALUES = new Set<GridFilterOp>(['anyOf', 'noneOf']);
 
 export class GridFilterDialog {
     private static _open: GridFilterDialog | null = null;
@@ -110,6 +122,8 @@ export class GridFilterDialog {
             header: string;
             kind: GridFilterKind;
             current: GridFilter | null;
+            /** The choices a set column is picked from; empty for every other kind. */
+            values: GridValueOption[];
             x: number;
             y: number;
         },
@@ -121,6 +135,7 @@ export class GridFilterDialog {
         const current = options.current || {};
         const startOp: GridFilterOp = current.op
             || (current.min !== undefined || current.max !== undefined ? 'between' : ops[0]);
+        const picked = new Set(current.values || []);
 
         const el = document.createElement('div');
         el.className = this._classes.dialog;
@@ -168,14 +183,35 @@ export class GridFilterDialog {
         row.appendChild(upper);
         el.appendChild(row);
 
+        // The values a set column is picked from. Each box carries the raw value the
+        // filter compares, and shows the label a person reads it by.
+        const boxes: HTMLInputElement[] = [];
+        const list = document.createElement('div');
+        list.className = this._classes.values;
+        for (const option of options.values) {
+            const item = document.createElement('label');
+            item.className = this._classes.valuesItem;
+            const box = document.createElement('input') as HTMLInputElement;
+            box.type = 'checkbox';
+            box.value = option.value;
+            box.checked = picked.has(option.value);
+            boxes.push(box);
+            item.appendChild(box);
+            item.appendChild(document.createTextNode(option.label));
+            list.appendChild(item);
+        }
+        if (options.values.length) el.appendChild(list);
+
         // The operand controls follow the rule: "is empty" takes none, "between"
         // takes two. Showing all three always would ask for values the rule ignores.
         const sync = () => {
             const op = select.value as GridFilterOp;
-            const none = NEEDS_NO_OPERAND.has(op);
+            const picks = PICKS_VALUES.has(op);
+            const none = NEEDS_NO_OPERAND.has(op) || picks;
             value.style.display = none ? 'none' : '';
             and.style.display = op === 'between' ? '' : 'none';
             upper.style.display = op === 'between' ? '' : 'none';
+            list.style.display = picks ? '' : 'none';
         };
         select.addEventListener('change', sync);
         sync();
@@ -185,6 +221,11 @@ export class GridFilterDialog {
         const applyButton = this._button(this._labels.apply, this._classes.apply, () => {
             const op = select.value as GridFilterOp;
             if (NEEDS_NO_OPERAND.has(op)) return commit({ op });
+            if (PICKS_VALUES.has(op)) {
+                const values = boxes.filter(box => box.checked).map(box => box.value);
+                // Nothing ticked is not a filter that hides everything; it is no filter.
+                return commit(values.length ? { op, values } : null);
+            }
             if (op === 'between') {
                 const min = value.value.trim() === '' ? undefined : Number(value.value);
                 const max = upper.value.trim() === '' ? undefined : Number(upper.value);

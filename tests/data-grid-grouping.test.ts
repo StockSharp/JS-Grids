@@ -178,4 +178,57 @@ describe('DataGrid grouping', () => {
         assert.equal(grid.groupedBy(), null);
         assert.deepEqual(shape(body), [['row', '1'], ['row', '2'], ['row', '3'], ['row', '4']]);
     });
+
+    it('heads a group by what the value reads as, not by the value', () => {
+        const head = new FakeElement('thead');
+        const body = new FakeElement('tbody');
+        // A side column: held as 0 and 1, read as Buy and Sell.
+        const grid = new DataGrid<Row>({
+            head: asDom(head),
+            body: asDom(body),
+            columns: [
+                { key: 'id', header: 'ID', exportable: true, value: r => r.id },
+                {
+                    key: 'side', header: 'Side', exportable: true,
+                    value: r => r.qty % 20 === 0 ? 1 : 0,
+                    text: r => (r.qty % 20 === 0 ? 'Sell' : 'Buy'),
+                },
+            ],
+            defaultSort: { col: 'id', dir: 'asc' },
+            rowKey: r => String(r.id),
+            emptyText: 'No rows',
+            ...{},
+        });
+        grid.setRows(ROWS);
+
+        grid.groupBy('side');
+
+        const headers = body.children.filter(tr => tr.className.includes('grid-group'));
+        assert.deepEqual(headers.map(tr => tr.textContent), ['▾ Buy (2)', '▾ Sell (2)']);
+        // The key stays the raw value, because collapse and the stored view are
+        // written against it.
+        assert.deepEqual(headers.map(tr => tr.getAttribute('data-group')), ['0', '1']);
+    });
+
+    it('collapses by the value, so a relabelled column keeps what was shut', () => {
+        const head = new FakeElement('thead');
+        const body = new FakeElement('tbody');
+        const grid = new DataGrid<Row>({
+            head: asDom(head),
+            body: asDom(body),
+            columns: [
+                { key: 'id', header: 'ID', exportable: true, value: r => r.id },
+                { key: 'side', header: 'Side', exportable: true, value: r => r.qty % 20 === 0 ? 1 : 0, text: () => 'whatever' },
+            ],
+            defaultSort: { col: 'id', dir: 'asc' },
+            rowKey: r => String(r.id),
+            emptyText: 'No rows',
+        });
+        grid.setRows(ROWS);
+        grid.groupBy('side');
+
+        grid.toggleGroup('1');
+
+        assert.deepEqual(grid.getState().collapsed, ['1']);
+    });
 });

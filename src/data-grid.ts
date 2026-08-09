@@ -99,14 +99,30 @@ export interface GridColumn<TRow> {
     bindCell?(td: HTMLTableCellElement, row: TRow): void;
 
     /**
-     * Whether the column appears in the exported sheet. An exportable column
-     * must be able to produce a value (`value` or `exportValue`).
+     * The value as a person reads it, when that is not the value itself: `Buy` for
+     * the 0 an order's side is held as, a status name for its code.
+     *
+     * The grid shows this wherever it has to name a value outside a cell -- a group
+     * header, the list a set filter is picked from, the menu line that filters by
+     * the value under the pointer -- while `value` goes on being what it sorts,
+     * groups and compares by. Without it those places read `0 (14)`, and a filter
+     * picked from them would be comparing a label against a number.
+     *
+     * Unlike `render`, this returns text and nothing but text, so the grid can put
+     * it in places that hold no markup.
      */
+    text?(row: TRow): string;
+
     /**
      * Draw a filter for this column, of this kind. Omit it and the column is not
      * filterable -- a filter row appears only once some column asks for one.
      */
     filter?: GridFilterKind;
+
+    /**
+     * Whether the column appears in the exported sheet. An exportable column
+     * must be able to produce a value (`value` or `exportValue`).
+     */
     exportable: boolean;
 
     /**
@@ -219,6 +235,18 @@ const MENU_LABELS: GridMenuLabels = {
 /** How many rows a user may have selected at once. */
 export type GridSelectionMode = 'none' | 'single' | 'multi';
 
+/** One value a set filter can be picked by: what it compares, and what it reads as. */
+export interface GridValueOption {
+    value: string;
+    label: string;
+}
+
+/// Rows sharing a value, under the label that value reads as.
+interface GridGroup<TRow> {
+    label: string;
+    rows: TRow[];
+}
+
 /**
  * One column's filter. Plain data rather than a predicate, and deliberately so:
  * a closure cannot be written to a store, so a grid filtered by one could never
@@ -237,7 +265,12 @@ export interface GridFilter {
     /** Inclusive bounds for `between`; `min` alone also carries the operand of ge/gt/eq/ne on numbers. */
     min?: number;
     max?: number;
-    /** Exact matches against the value's text. */
+    /**
+     * The values the rule picks from, as the column's `value` produces them -- the
+     * raw side, not the "Buy" a person picked. `anyOf` keeps them, `noneOf` drops
+     * them; with no op at all the list reads as `anyOf`, which is what the single
+     * select in the filter row writes.
+     */
     values?: string[];
 }
 
@@ -249,6 +282,7 @@ export interface GridFilter {
 export type GridFilterOp =
     'contains' | 'notContains' | 'startsWith' | 'endsWith'
     | 'eq' | 'ne' | 'gt' | 'ge' | 'lt' | 'le' | 'between'
+    | 'anyOf' | 'noneOf'
     | 'empty' | 'notEmpty';
 
 /**
@@ -543,14 +577,17 @@ export class DataGrid<TRow> {
     }
 
     private static _passes(value: unknown, filter: GridFilter): boolean {
-        // A set filter is its own thing: it is picked from the values present rather
-        // than compared, so it applies whatever else the filter says.
-        if (filter.values !== undefined && !filter.values.includes(DataGrid._text(value))) return false;
-
         const op = DataGrid._effectiveOp(filter);
         if (!op) return true;
 
         const text = DataGrid._text(value);
+        // A set filter is picked from the values present rather than compared against
+        // an operand, so it answers on its own terms.
+        if (op === 'anyOf' || op === 'noneOf') {
+            const listed = (filter.values || []).includes(text);
+            return op === 'anyOf' ? listed : !listed;
+        }
+
         if (op === 'empty') return text === '';
         if (op === 'notEmpty') return text !== '';
 
@@ -590,6 +627,10 @@ export class DataGrid<TRow> {
     /// goes on meaning what it meant.
     private static _effectiveOp(filter: GridFilter): GridFilterOp | null {
         if (filter.op) return filter.op;
+        // No op means the shape decides, which is what the controls in the filter row
+        // write: a box of text reads as "contains", a pair of numbers as "between",
+        // and a picked value as "any of".
+        if (filter.values !== undefined) return 'anyOf';
         if (filter.min !== undefined || filter.max !== undefined) return 'between';
         if (filter.text !== undefined) return 'contains';
         return null;
@@ -625,9 +666,13 @@ export class DataGrid<TRow> {
             }
 
             if (context.row !== null) {
+                // Named by what the cell reads as, filtering by what the column holds.
+                // Taking the cell's text for both matched a label against a raw value,
+                // so on a column showing "Buy" for 0 this line filtered everything out.
+                const value = DataGrid._text(col.value ? col.value(context.row) : null);
                 items.push({
-                    label: `${labels.filterByValue}: ${context.text}`,
-                    run: () => this.setFilter(col.key, { values: [context.text] }),
+                    label: `${labels.filterByValue}: ${this._displayText(col, context.row)}`,
+                    run: () => this.setFilter(col.key, { op: 'anyOf', values: [value] }),
                 });
             }
         }
@@ -889,7 +934,16 @@ export class DataGrid<TRow> {
         if (!this._filterDialog) this._filterDialog = new GridFilterDialog(options.classes, options.labels);
 
         this._filterDialog.open(
-            { header: col.header, kind: col.filter, current: this._filters[key] || null, x, y },
+            {
+                header: col.header,
+                kind: col.filter,
+                current: this._filters[key] || null,
+                // A set column is picked from, not typed into: the dialog needs the
+                // values the rows actually hold, each under the label it reads as.
+                values: col.filter === 'set' ? this._distinctValues(col) : [],
+                x,
+                y,
+            },
             filter => this.setFilter(key, filter),
         );
     }
@@ -1015,7 +1069,7 @@ export class DataGrid<TRow> {
     displayRows(): TRow[] {
         const sorted = this.sortedRows();
         if (this._group === null) return sorted;
-        return [...this._groups(sorted).values()].flat();
+        return [...this._groups(sorted).values()].flatMap(group => group.rows);
     }
 
     setRows(rows: TRow[]): void {
@@ -1056,11 +1110,11 @@ export class DataGrid<TRow> {
             // Groups run in value order while the rows inside each keep the sort the
             // user picked -- sorting by quantity inside "AAPL" should not shuffle
             // "AAPL" itself against "BTC".
-            for (const [value, rows] of this._groups(sorted)) {
+            for (const [key, group] of this._groups(sorted)) {
                 if (painted >= limit) break;
-                children.push(this._groupRow(value, rows.length));
-                if (this._collapsed.has(value)) continue;
-                for (const row of rows) {
+                children.push(this._groupRow(key, group.label, group.rows.length));
+                if (this._collapsed.has(key)) continue;
+                for (const row of group.rows) {
                     // The limit counts rows of data: a group header is a label for the
                     // rows under it, and capping on it would cut a group off at its own title.
                     if (painted >= limit) break;
@@ -1221,10 +1275,10 @@ export class DataGrid<TRow> {
         blank.value = '';
         blank.textContent = '';
         select.appendChild(blank);
-        for (const value of this._distinctValues(col)) {
+        for (const { value, label } of this._distinctValues(col)) {
             const option = document.createElement('option') as HTMLOptionElement;
             option.value = value;
-            option.textContent = value;
+            option.textContent = label;
             select.appendChild(option);
         }
         select.value = current.values && current.values.length ? current.values[0] : '';
@@ -1236,29 +1290,44 @@ export class DataGrid<TRow> {
 
     /// Replaces the option list only when the values behind it changed, so a live
     /// table that repaints on every tick does not rebuild a select the user is using.
-    private _syncOptions(select: HTMLSelectElement, values: string[]): void {
+    private _syncOptions(select: HTMLSelectElement, values: GridValueOption[]): void {
         const current = Array.from(select.children).slice(1).map(el => (el as HTMLOptionElement).value);
-        if (current.length === values.length && current.every((v, i) => v === values[i])) return;
+        if (current.length === values.length && current.every((v, i) => v === values[i].value)) return;
 
         const blank = document.createElement('option') as HTMLOptionElement;
         blank.value = '';
         blank.textContent = '';
         const options: HTMLElement[] = [blank];
-        for (const value of values) {
+        for (const { value, label } of values) {
             const option = document.createElement('option') as HTMLOptionElement;
             option.value = value;
-            option.textContent = value;
+            option.textContent = label;
             options.push(option);
         }
         select.replaceChildren(...options);
     }
 
-    private _distinctValues(col: GridColumn<TRow>): string[] {
-        const seen = new Set<string>();
+    /// The value as a person reads it. One place, because a group header, a filter's
+    /// option list and the menu line that filters by a value all have to agree -- and
+    /// all of them have to disagree with `value`, which stays what the grid compares.
+    private _displayText(col: GridColumn<TRow>, row: TRow): string {
+        if (col.text) return col.text(row);
+        return DataGrid._text(col.value ? col.value(row) : null);
+    }
+
+    /// Every value the column holds, paired with the label it is picked by. Keyed by
+    /// the raw value: two rows reading "Buy" are one option, and the option carries
+    /// the 0 the filter will actually compare against.
+    private _distinctValues(col: GridColumn<TRow>): GridValueOption[] {
+        const seen = new Map<string, string>();
         for (const row of this._rows) {
-            if (col.value) seen.add(DataGrid._text(col.value(row)));
+            if (!col.value) continue;
+            const value = DataGrid._text(col.value(row));
+            if (!seen.has(value)) seen.set(value, this._displayText(col, row));
         }
-        return [...seen].sort();
+        return [...seen.entries()]
+            .map(([value, label]) => ({ value, label }))
+            .sort((a, b) => a.label.localeCompare(b.label));
     }
 
     /**
@@ -1392,29 +1461,32 @@ export class DataGrid<TRow> {
 
     /// Rows by their group value, in value order, each group keeping the row order
     /// it was handed.
-    private _groups(rows: TRow[]): Map<string, TRow[]> {
+    private _groups(rows: TRow[]): Map<string, GridGroup<TRow>> {
         const col = this.options.columns.find(c => c.key === this._group);
-        const groups = new Map<string, TRow[]>();
+        const groups = new Map<string, GridGroup<TRow>>();
         for (const row of rows) {
-            const value = DataGrid._text(col && col.value ? col.value(row) : null);
-            const bucket = groups.get(value);
-            if (bucket) bucket.push(row);
-            else groups.set(value, [row]);
+            // Keyed by the raw value and labelled by the readable one: collapse state
+            // and the stored view are written against the key, so a column that starts
+            // spelling its values differently must not lose which groups were shut.
+            const key = DataGrid._text(col && col.value ? col.value(row) : null);
+            const group = groups.get(key);
+            if (group) group.rows.push(row);
+            else groups.set(key, { label: col ? this._displayText(col, row) : key, rows: [row] });
         }
-        return new Map([...groups.entries()].sort((a, b) => a[0].localeCompare(b[0])));
+        return new Map([...groups.entries()].sort((a, b) => a[1].label.localeCompare(b[1].label)));
     }
 
-    private _groupRow(value: string, count: number): HTMLTableRowElement {
+    private _groupRow(key: string, label: string, count: number): HTMLTableRowElement {
         const tr = document.createElement('tr') as HTMLTableRowElement;
-        tr.className = this._collapsed.has(value) ? 'grid-group is-collapsed' : 'grid-group';
-        tr.dataset.group = value;
+        tr.className = this._collapsed.has(key) ? 'grid-group is-collapsed' : 'grid-group';
+        tr.dataset.group = key;
 
         const td = document.createElement('td') as HTMLTableCellElement;
         td.colSpan = this.visibleColumns().length;
-        td.textContent = `${this._collapsed.has(value) ? '▸' : '▾'} ${value} (${count})`;
+        td.textContent = `${this._collapsed.has(key) ? '▸' : '▾'} ${label} (${count})`;
         tr.appendChild(td);
 
-        tr.addEventListener('click', () => this.toggleGroup(value));
+        tr.addEventListener('click', () => this.toggleGroup(key));
         return tr;
     }
 

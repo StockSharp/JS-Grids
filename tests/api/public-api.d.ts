@@ -182,14 +182,28 @@ export interface GridColumn<TRow> {
      */
     bindCell?(td: HTMLTableCellElement, row: TRow): void;
     /**
-     * Whether the column appears in the exported sheet. An exportable column
-     * must be able to produce a value (`value` or `exportValue`).
+     * The value as a person reads it, when that is not the value itself: `Buy` for
+     * the 0 an order's side is held as, a status name for its code.
+     *
+     * The grid shows this wherever it has to name a value outside a cell -- a group
+     * header, the list a set filter is picked from, the menu line that filters by
+     * the value under the pointer -- while `value` goes on being what it sorts,
+     * groups and compares by. Without it those places read `0 (14)`, and a filter
+     * picked from them would be comparing a label against a number.
+     *
+     * Unlike `render`, this returns text and nothing but text, so the grid can put
+     * it in places that hold no markup.
      */
+    text?(row: TRow): string;
     /**
      * Draw a filter for this column, of this kind. Omit it and the column is not
      * filterable -- a filter row appears only once some column asks for one.
      */
     filter?: GridFilterKind;
+    /**
+     * Whether the column appears in the exported sheet. An exportable column
+     * must be able to produce a value (`value` or `exportValue`).
+     */
     exportable: boolean;
     /**
      * Exported value, when it differs from `value`: the localized text the user
@@ -276,6 +290,11 @@ export interface GridMenuLabels {
 }
 /** How many rows a user may have selected at once. */
 export type GridSelectionMode = 'none' | 'single' | 'multi';
+/** One value a set filter can be picked by: what it compares, and what it reads as. */
+export interface GridValueOption {
+    value: string;
+    label: string;
+}
 /**
  * One column's filter. Plain data rather than a predicate, and deliberately so:
  * a closure cannot be written to a store, so a grid filtered by one could never
@@ -294,7 +313,12 @@ export interface GridFilter {
     /** Inclusive bounds for `between`; `min` alone also carries the operand of ge/gt/eq/ne on numbers. */
     min?: number;
     max?: number;
-    /** Exact matches against the value's text. */
+    /**
+     * The values the rule picks from, as the column's `value` produces them -- the
+     * raw side, not the "Buy" a person picked. `anyOf` keeps them, `noneOf` drops
+     * them; with no op at all the list reads as `anyOf`, which is what the single
+     * select in the filter row writes.
+     */
     values?: string[];
 }
 /**
@@ -302,7 +326,7 @@ export interface GridFilter {
  * user filtering an id column expects `>` to mean what it says, and a symbol
  * column compares as text.
  */
-export type GridFilterOp = 'contains' | 'notContains' | 'startsWith' | 'endsWith' | 'eq' | 'ne' | 'gt' | 'ge' | 'lt' | 'le' | 'between' | 'empty' | 'notEmpty';
+export type GridFilterOp = 'contains' | 'notContains' | 'startsWith' | 'endsWith' | 'eq' | 'ne' | 'gt' | 'ge' | 'lt' | 'le' | 'between' | 'anyOf' | 'noneOf' | 'empty' | 'notEmpty';
 /**
  * What the user arranged, and nothing the data decided. This is the whole of what
  * a host has to store to bring a table back the way somebody left it: which
@@ -534,7 +558,7 @@ export declare class DataGrid<TRow> {
 }
 
 // FILE: filter-dialog.d.ts
-import type { GridFilter, GridFilterKind, GridFilterOp } from './data-grid.js';
+import type { GridFilter, GridFilterKind, GridFilterOp, GridValueOption } from './data-grid.js';
 /** Class names for the dialog's parts. */
 export interface GridFilterDialogClasses {
     dialog?: string;
@@ -542,6 +566,10 @@ export interface GridFilterDialogClasses {
     row?: string;
     select?: string;
     input?: string;
+    /** The scrolling list of values a set filter is picked from. */
+    values?: string;
+    /** One tickable value in that list. */
+    valuesItem?: string;
     actions?: string;
     apply?: string;
     clear?: string;
@@ -569,6 +597,8 @@ export declare class GridFilterDialog {
         header: string;
         kind: GridFilterKind;
         current: GridFilter | null;
+        /** The choices a set column is picked from; empty for every other kind. */
+        values: GridValueOption[];
         x: number;
         y: number;
     }, commit: (filter: GridFilter | null) => void): void;

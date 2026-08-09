@@ -28,8 +28,10 @@ interface Parts {
 
 function parts(): Parts {
     const dialog = openDialog()!;
-    const row = dialog.children[1];
-    const actions = dialog.children[2];
+    // Found by class, not by index: a set column grows a value list between the row
+    // and the buttons, and a helper counting children would then click the list.
+    const row = dialog.children.find(el => el.className === 'grid-filter-dialog-row')!;
+    const actions = dialog.children.find(el => el.className === 'grid-filter-dialog-actions')!;
     return {
         dialog,
         select: row.children[0],
@@ -46,7 +48,7 @@ function show(options: Partial<Parameters<GridFilterDialog['open']>[0]> = {}) {
     const committed: (GridFilter | null)[] = [];
     const dialog = new GridFilterDialog();
     dialog.open(
-        { header: 'Qty', kind: 'number', current: null, x: 10, y: 20, ...options } as Parameters<GridFilterDialog['open']>[0],
+        { header: 'Qty', kind: 'number', current: null, values: [], x: 10, y: 20, ...options } as Parameters<GridFilterDialog['open']>[0],
         filter => committed.push(filter),
     );
     return { dialog, committed };
@@ -194,5 +196,64 @@ describe('GridFilterDialog', () => {
         show();
 
         assert.equal(fakeDocument.body.children.filter(el => el.className.includes('grid-filter-dialog')).length, 1);
+    });
+
+    it('offers a set column its values to tick, not a box to type in', () => {
+        const { committed } = show({
+            kind: 'set',
+            // The raw value is what the column holds; the label is what the cell shows.
+            values: [{ value: '0', label: 'Buy' }, { value: '1', label: 'Sell' }],
+        });
+        const { dialog, select, value } = parts();
+
+        // Typing at a set column is how a filter ends up comparing "Buy" against 0.
+        assert.deepEqual(select.children.map(el => el.value), ['anyOf', 'noneOf', 'empty', 'notEmpty']);
+        assert.equal(value.style.display, 'none');
+
+        const list = dialog.children.find(el => el.className === 'grid-filter-dialog-values')!;
+        assert.deepEqual(list.children.map(el => el.textContent), ['Buy', 'Sell']);
+
+        const boxes = list.children.map(el => el.children[0]);
+        boxes[1].checked = true;
+        parts().apply.click();
+
+        // What goes to the grid is the value, never the label.
+        assert.deepEqual(committed, [{ op: 'anyOf', values: ['1'] }]);
+    });
+
+    it('ticks back what the applied filter holds', () => {
+        show({
+            kind: 'set',
+            current: { op: 'noneOf', values: ['1'] },
+            values: [{ value: '0', label: 'Buy' }, { value: '1', label: 'Sell' }],
+        });
+        const { dialog, select } = parts();
+
+        assert.equal(select.value, 'noneOf');
+        const list = dialog.children.find(el => el.className === 'grid-filter-dialog-values')!;
+        assert.deepEqual(list.children.map(el => el.children[0].checked), [false, true]);
+    });
+
+    it('reads nothing ticked as no filter rather than as a filter on nothing', () => {
+        const { committed } = show({
+            kind: 'set',
+            values: [{ value: '0', label: 'Buy' }],
+        });
+
+        parts().apply.click();
+
+        assert.deepEqual(committed, [null]);
+    });
+
+    it('hides the value list for a rule that does not pick values', () => {
+        show({ kind: 'set', values: [{ value: '0', label: 'Buy' }] });
+        const { dialog, select } = parts();
+        const list = dialog.children.find(el => el.className === 'grid-filter-dialog-values')!;
+
+        assert.equal(list.style.display, '');
+
+        select.value = 'notEmpty';
+        select.dispatchEvent({ type: 'change', target: select });
+        assert.equal(list.style.display, 'none');
     });
 });

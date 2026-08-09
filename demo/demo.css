@@ -392,3 +392,26 @@ tr.sel td { background: #1d2a3d; }
   /* A popup pinned to a pointer has nowhere to go on a 390px screen. */
   .grid-menu, .grid-filter-dialog { max-width: calc(100vw - 24px); }
 }
+
+/* The values a set filter is picked from: a short scrolling list of tick boxes. */
+.grid-filter-dialog-values {
+	max-height: 180px;
+	overflow-y: auto;
+	margin: 8px 0 0;
+	border: 1px solid var(--t-border);
+	border-radius: 6px;
+	padding: 4px;
+}
+
+.grid-filter-dialog-values-item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 4px 6px;
+	border-radius: 4px;
+	cursor: pointer;
+}
+
+.grid-filter-dialog-values-item:hover {
+	background: var(--t-header);
+}

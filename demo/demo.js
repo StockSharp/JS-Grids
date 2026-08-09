@@ -87,7 +87,10 @@
         { key: 'board', header: 'Board', exportable: true, filter: 'set', value: function (o) { return o.board; }, cellClass: function () { return 'dim'; } },
         {
             key: 'side', header: 'Side', exportable: true, filter: 'set',
+            // Held as 0/1 and read as Buy/Sell: `value` sorts and filters, `text` is
+            // what a group header and the filter's value list say.
             value: function (o) { return o.side; },
+            text: function (o) { return o.side === 0 ? 'Buy' : 'Sell'; },
             render: function (o) { return o.side === 0 ? 'Buy' : 'Sell'; },
             cellClass: function (o) { return o.side === 0 ? 'side-buy' : 'side-sell'; },
             exportValue: function (o) { return o.side === 0 ? 'Buy' : 'Sell'; }
