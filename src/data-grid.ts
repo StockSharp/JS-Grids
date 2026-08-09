@@ -211,6 +211,8 @@ export interface GridMenuLabels {
     filterRule: string;
     showFilters: string;
     hideFilters: string;
+    showHeader: string;
+    hideHeader: string;
     clearFilters: string;
     copyCell: string;
     copyRow: string;
@@ -231,6 +233,8 @@ const MENU_LABELS: GridMenuLabels = {
     filterRule: 'Filter…',
     showFilters: 'Show filter row',
     hideFilters: 'Hide filter row',
+    showHeader: 'Show header row',
+    hideHeader: 'Hide header row',
     clearFilters: 'Clear filters',
     copyCell: 'Copy cell',
     copyRow: 'Copy row',
@@ -308,6 +312,8 @@ export interface GridState {
     hidden?: string[];
     /** Whether the filter row is on screen. Absent means the table's own default. */
     filtersVisible?: boolean;
+    /** Whether the caption row is on screen. Absent means the table's own default. */
+    headerVisible?: boolean;
     sort?: SortSpec | null;
     /** By column key. Columns that are not filtered are absent rather than empty. */
     filters?: Record<string, GridFilter>;
@@ -392,6 +398,12 @@ export interface GridOptions<TRow> {
      */
     filtersVisible?: boolean;
     /**
+     * Show the caption row. On by default; a host turns it off for a table that
+     * reads as a stream — a tape — and the menu's toggle brings it back. The
+     * filter row is its own decision (`filtersVisible`) and stays either way.
+     */
+    headerVisible?: boolean;
+    /**
      * Whether clicking a row selects it, and whether more than one can be selected.
      * Defaults to 'none': a table that is read, not acted on, should not respond to
      * a click with a highlight nobody asked for.
@@ -441,6 +453,7 @@ export class DataGrid<TRow> {
     private _filters: Record<string, GridFilter>;
     private _group: string | null;
     private _filtersVisible: boolean;
+    private _headerVisible: boolean;
     /// By row key, never by index or element: a repaint rebuilds every `<tr>`, and a
     /// filter takes rows off screen and brings them back.
     private _selected: Set<string>;
@@ -484,6 +497,7 @@ export class DataGrid<TRow> {
         this._dragKey = null;
         this._filters = {};
         this._filtersVisible = options.filtersVisible === true;
+        this._headerVisible = options.headerVisible !== false;
         this._group = null;
         this._collapsed = new Set();
         this._selected = new Set();
@@ -564,6 +578,17 @@ export class DataGrid<TRow> {
     showFilters(visible: boolean): void {
         if (this._filtersVisible === visible) return;
         this._filtersVisible = visible;
+        this._rerender();
+    }
+
+    headerVisible(): boolean {
+        return this._headerVisible;
+    }
+
+    /** Show or hide the caption row. Sort, columns and filters are kept either way. */
+    showHeader(visible: boolean): void {
+        if (this._headerVisible === visible) return;
+        this._headerVisible = visible;
         this._rerender();
     }
 
@@ -759,6 +784,13 @@ export class DataGrid<TRow> {
             label: labels.showAllColumns,
             disabled: this._hidden.size === 0,
             run: () => { for (const key of [...this._hidden]) this.showColumn(key); },
+        });
+        // From the body as much as from the header — once the captions are
+        // hidden, the body is the only place left to bring them back from.
+        items.push({
+            label: this._headerVisible ? labels.hideHeader : labels.showHeader,
+            checked: this._headerVisible,
+            run: () => this.showHeader(!this._headerVisible),
         });
 
         if (context.row !== null) {
@@ -1074,6 +1106,7 @@ export class DataGrid<TRow> {
             sort: this.sort.current(),
             filters: this.filters(),
             filtersVisible: this._filtersVisible,
+            headerVisible: this._headerVisible,
             group: this._group,
             collapsed: this.collapsedGroups(),
         };
@@ -1094,6 +1127,7 @@ export class DataGrid<TRow> {
                 else this.sort.set(null, null);
             }
             if (state.filtersVisible !== undefined) this._filtersVisible = state.filtersVisible;
+            if (state.headerVisible !== undefined) this._headerVisible = state.headerVisible;
             if (state.group !== undefined) {
                 const col = state.group && this.options.columns.find(c => c.key === state.group);
                 this._group = col && col.value ? state.group! : null;
@@ -1273,6 +1307,14 @@ export class DataGrid<TRow> {
     }
 
     private _renderHead(): void {
+        // No caption row — the filter row, when on, still stands on its own.
+        if (!this._headerVisible) {
+            const filterRow = this._filterRow();
+            if (filterRow) this.options.head.replaceChildren(filterRow);
+            else this.options.head.replaceChildren();
+            return;
+        }
+
         const tr = document.createElement('tr');
         for (const col of this.visibleColumns()) {
             const th = document.createElement('th');

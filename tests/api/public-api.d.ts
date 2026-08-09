@@ -283,6 +283,8 @@ export interface GridMenuLabels {
     filterRule: string;
     showFilters: string;
     hideFilters: string;
+    showHeader: string;
+    hideHeader: string;
     clearFilters: string;
     copyCell: string;
     copyRow: string;
@@ -346,6 +348,8 @@ export interface GridState {
     hidden?: string[];
     /** Whether the filter row is on screen. Absent means the table's own default. */
     filtersVisible?: boolean;
+    /** Whether the caption row is on screen. Absent means the table's own default. */
+    headerVisible?: boolean;
     sort?: SortSpec | null;
     /** By column key. Columns that are not filtered are absent rather than empty. */
     filters?: Record<string, GridFilter>;
@@ -426,6 +430,12 @@ export interface GridOptions<TRow> {
      */
     filtersVisible?: boolean;
     /**
+     * Show the caption row. On by default; a host turns it off for a table that
+     * reads as a stream — a tape — and the menu's toggle brings it back. The
+     * filter row is its own decision (`filtersVisible`) and stays either way.
+     */
+    headerVisible?: boolean;
+    /**
      * Whether clicking a row selects it, and whether more than one can be selected.
      * Defaults to 'none': a table that is read, not acted on, should not respond to
      * a click with a highlight nobody asked for.
@@ -477,6 +487,9 @@ export declare class DataGrid<TRow> {
     filtersVisible(): boolean;
     /** Show or hide the filter row. The filters themselves are kept either way. */
     showFilters(visible: boolean): void;
+    headerVisible(): boolean;
+    /** Show or hide the caption row. Sort, columns and filters are kept either way. */
+    showHeader(visible: boolean): void;
     /** The filters in effect, by column key. Columns with none are absent. */
     filters(): Record<string, GridFilter>;
     /**
