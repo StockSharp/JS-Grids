@@ -1,6 +1,6 @@
 {
   "name": "@stocksharp/grids",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Browser data grid for StockSharp: column-driven table rendering, sorting, a column picker for server-rendered tables, and .xlsx export.",
   "license": "SEE LICENSE IN LICENSE",
   "author": {
