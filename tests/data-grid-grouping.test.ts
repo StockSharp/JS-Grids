@@ -231,4 +231,56 @@ describe('DataGrid grouping', () => {
 
         assert.deepEqual(grid.getState().collapsed, ['1']);
     });
+
+    it('orders groups the way the column sorts, numbers included', () => {
+        const head = new FakeElement('thead');
+        const body = new FakeElement('tbody');
+        interface Lot { id: number; strike: number; }
+        const grid = new DataGrid<Lot>({
+            head: asDom(head),
+            body: asDom(body),
+            columns: [
+                { key: 'id', header: 'ID', exportable: true, value: r => r.id },
+                { key: 'strike', header: 'Strike', exportable: true, value: r => r.strike },
+            ],
+            defaultSort: { col: 'id', dir: 'asc' },
+            rowKey: r => String(r.id),
+            emptyText: 'No rows',
+        });
+        grid.setRows([{ id: 1, strike: 100 }, { id: 2, strike: 2 }, { id: 3, strike: 10 }]);
+
+        grid.groupBy('strike');
+
+        // Compared as text without numeric collation this reads 10, 100, 2 -- the
+        // groups disagreeing with the sort arrow on the same column.
+        const labels = body.children.filter(tr => tr.className.includes('grid-group')).map(tr => tr.textContent);
+        assert.deepEqual(labels, ['▾ 2 (1)', '▾ 10 (1)', '▾ 100 (1)']);
+    });
+
+    it('hands the group header to a host that wants to write it differently', () => {
+        const head = new FakeElement('thead');
+        const body = new FakeElement('tbody');
+        const grid = new DataGrid<Row>({
+            head: asDom(head),
+            body: asDom(body),
+            columns: [
+                { key: 'id', header: 'ID', exportable: true, value: r => r.id },
+                { key: 'symbol', header: 'Symbol', exportable: true, value: r => r.symbol },
+            ],
+            defaultSort: { col: 'id', dir: 'asc' },
+            rowKey: r => String(r.id),
+            emptyText: 'No rows',
+            groupHeader: (label: string, count: number, collapsed: boolean) =>
+                `${collapsed ? '+' : '-'} ${label}: ${count} 条`,
+        });
+        grid.setRows(ROWS);
+
+        grid.groupBy('symbol');
+        const header = body.children.find(tr => tr.className.includes('grid-group'))!;
+        assert.equal(header.textContent, '- AAPL: 2 条');
+
+        grid.toggleGroup('AAPL');
+        const collapsed = body.children.find(tr => tr.className.includes('grid-group'))!;
+        assert.equal(collapsed.textContent, '+ AAPL: 2 条');
+    });
 });

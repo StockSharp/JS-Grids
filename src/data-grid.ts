@@ -202,14 +202,20 @@ export interface GridMenuLabels {
     showAllColumns: string;
     groupBy: string;
     ungroup: string;
-    filterByValue: string;
+    /**
+     * Names the value under the pointer. A function rather than a string because the
+     * line is two pieces joined, and what joins them is a language's business: a
+     * Chinese UI wants a full-width colon, and some languages want the value first.
+     */
+    filterByValue(text: string): string;
     filterRule: string;
     showFilters: string;
     hideFilters: string;
     clearFilters: string;
     copyCell: string;
     copyRow: string;
-    copyRows: string;
+    /** Names how many rows go. A function for the same reason as `filterByValue`. */
+    copyRows(count: number): string;
     exportXlsx: string;
 }
 
@@ -221,14 +227,14 @@ const MENU_LABELS: GridMenuLabels = {
     showAllColumns: 'Show all columns',
     groupBy: 'Group by this column',
     ungroup: 'Ungroup',
-    filterByValue: 'Filter by this value',
+    filterByValue: text => `Filter by this value: ${text}`,
     filterRule: 'Filter…',
     showFilters: 'Show filter row',
     hideFilters: 'Hide filter row',
     clearFilters: 'Clear filters',
     copyCell: 'Copy cell',
     copyRow: 'Copy row',
-    copyRows: 'Copy selected rows',
+    copyRows: count => `Copy selected rows (${count})`,
     exportXlsx: 'Export to .xlsx',
 };
 
@@ -359,6 +365,26 @@ export interface GridOptions<TRow> {
      */
     reorderable?: boolean;
     /**
+     * The language the table is written in, as a BCP 47 tag. It decides the order of
+     * everything compared as text -- the sort, the groups, a set filter's option list
+     * -- so a page rendered in German orders the same way for every visitor instead of
+     * following whatever locale their browser happens to be set to.
+     *
+     * Left out, the collator takes the document's own language.
+     */
+    locale?: string;
+
+    /** A collator of your own, when the default (numeric, case-folding) is not it. */
+    collator?: Intl.Collator;
+
+    /**
+     * The line a group header shows. The default reads `▾ Buy (14)`; override it for a
+     * language that writes counts differently, or return a Node to put a real chevron
+     * element in place of the triangle.
+     */
+    groupHeader?(label: string, count: number, collapsed: boolean): string | Node;
+
+    /**
      * Show the row of filter boxes under the header. Off by default: the rule dialog
      * says everything the row can and more -- an operator, not just a substring -- and
      * a row of boxes costs a line of vertical space on every table that has one. Turn
@@ -414,6 +440,12 @@ export class DataGrid<TRow> {
     private _anchorKey: string | null;
     private _menu: GridContextMenu | null;
     private _dragging: boolean;
+    /// One collator for the whole grid: the sort, the group order, the option list a
+    /// set filter offers, and the ordering filter rules. They compare the same strings
+    /// and had better agree about what comes first.
+    private readonly _collator: Intl.Collator;
+    /// What to undo when the grid is destroyed: the listeners it put on the document.
+    private readonly _release: (() => void)[] = [];
     /// The grid a keyboard shortcut belongs to: the last one the pointer touched.
     /// Two grids on a page both holding a selection would otherwise both answer Ctrl+C.
     private static _active: DataGrid<unknown> | null = null;
@@ -447,6 +479,12 @@ export class DataGrid<TRow> {
         this._menu = null;
         this._filterDialog = null;
         this._dragging = false;
+        this._collator = options.collator
+            || new Intl.Collator(
+                options.locale || (typeof document !== 'undefined' ? document.documentElement?.lang : '') || undefined,
+                // numeric so a text column of ids reads 1, 2, 10 rather than 1, 10, 2,
+                // and accent-sensitive so it folds case the way the text filters do.
+                { numeric: true, sensitivity: 'accent' });
         this._filterEls = new Map();
         this._restoring = false;
 
@@ -459,7 +497,7 @@ export class DataGrid<TRow> {
         // active column on the cells it finds under `head` right away, so that the
         // resting sort is visible on first paint and not only after a click.
         this._renderHead();
-        this.sort = new TableSort<TRow>(options.head, accessors, () => this.render(), options.defaultSort);
+        this.sort = new TableSort<TRow>(options.head, accessors, () => this.render(), options.defaultSort, this._collator);
         this._paint();
         if (options.contextMenu) this._bindContextMenu();
         if ((options.selection || 'none') !== 'none') this._bindCopyShortcut();
@@ -550,7 +588,7 @@ export class DataGrid<TRow> {
             // A filter naming a column that is gone matches everything rather than
             // nothing: a stale stored filter must not empty the table.
             if (!col || !col.value) return true;
-            return DataGrid._passes(col.value(row), filter);
+            return this._passes(col.value(row), filter);
         }));
     }
 
@@ -576,7 +614,7 @@ export class DataGrid<TRow> {
         return Object.keys(out).length ? out : null;
     }
 
-    private static _passes(value: unknown, filter: GridFilter): boolean {
+    private _passes(value: unknown, filter: GridFilter): boolean {
         const op = DataGrid._effectiveOp(filter);
         if (!op) return true;
 
@@ -607,6 +645,12 @@ export class DataGrid<TRow> {
         const right = Number(operandText);
         const numeric = text !== '' && operandText !== '' && Number.isFinite(left) && Number.isFinite(right);
 
+        // Ordering compares through the collator, not with `>` on strings: raw
+        // comparison is UTF-16 code-unit order, which puts every accented letter after
+        // z and every Cyrillic capital before every small letter -- so a column shown
+        // in one order would filter in another.
+        const order = numeric ? Math.sign(left - right) : this._collator.compare(text, operandText);
+
         switch (op) {
             case 'contains': return text.toLowerCase().includes(operandText.toLowerCase());
             case 'notContains': return !text.toLowerCase().includes(operandText.toLowerCase());
@@ -614,10 +658,10 @@ export class DataGrid<TRow> {
             case 'endsWith': return text.toLowerCase().endsWith(operandText.toLowerCase());
             case 'eq': return numeric ? left === right : text.toLowerCase() === operandText.toLowerCase();
             case 'ne': return numeric ? left !== right : text.toLowerCase() !== operandText.toLowerCase();
-            case 'gt': return numeric ? left > right : text > operandText;
-            case 'ge': return numeric ? left >= right : text >= operandText;
-            case 'lt': return numeric ? left < right : text < operandText;
-            case 'le': return numeric ? left <= right : text <= operandText;
+            case 'gt': return order > 0;
+            case 'ge': return order >= 0;
+            case 'lt': return order < 0;
+            case 'le': return order <= 0;
             default: return true;
         }
     }
@@ -671,7 +715,7 @@ export class DataGrid<TRow> {
                 // so on a column showing "Buy" for 0 this line filtered everything out.
                 const value = DataGrid._text(col.value ? col.value(context.row) : null);
                 items.push({
-                    label: `${labels.filterByValue}: ${this._displayText(col, context.row)}`,
+                    label: labels.filterByValue(this._displayText(col, context.row)),
                     run: () => this.setFilter(col.key, { op: 'anyOf', values: [value] }),
                 });
             }
@@ -711,7 +755,7 @@ export class DataGrid<TRow> {
                 {
                     // Names how many rows go, because "Copy row" over a selection of
                     // twelve would be a lie about what the click is about to do.
-                    label: this._selected.size > 1 ? `${labels.copyRows} (${this._selected.size})` : labels.copyRow,
+                    label: this._selected.size > 1 ? labels.copyRows(this._selected.size) : labels.copyRow,
                     run: () => this.copyRows(context.row),
                 },
             );
@@ -876,7 +920,7 @@ export class DataGrid<TRow> {
     /// a table has no focus of its own, and answered only by the grid the pointer last
     /// touched -- otherwise every grid on the page would copy at once.
     private _bindCopyShortcut(): void {
-        document.addEventListener('keydown', (event: Event) => {
+        const onKeyDown = (event: Event) => {
             const e = event as unknown as { key?: string; code?: string; ctrlKey?: boolean; metaKey?: boolean; target?: { tagName?: string } };
             if (!(e.ctrlKey || e.metaKey)) return;
             // `code` is the physical key, so this holds on a layout where that key
@@ -891,7 +935,25 @@ export class DataGrid<TRow> {
             if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
 
             if (this.copyRows(null)) event.preventDefault();
-        });
+        };
+        document.addEventListener('keydown', onKeyDown);
+        this._release.push(() => document.removeEventListener('keydown', onKeyDown));
+    }
+
+    /**
+     * Let the grid go. Everything it put outside its own two elements comes off: the
+     * Ctrl+C binding on the document, and any menu or filter popup still open.
+     *
+     * A host needs this whenever it replaces a grid rather than updating one -- the
+     * columns are declared once, so re-declaring them (translated headers, a different
+     * set of columns) means a new grid over the same table, and the old one would go
+     * on answering Ctrl+C from beyond the grave.
+     */
+    destroy(): void {
+        for (const release of this._release.splice(0)) release();
+        this._menu?.close();
+        this._filterDialog?.close();
+        if (DataGrid._active === (this as unknown as DataGrid<unknown>)) DataGrid._active = null;
     }
 
     private _clickRow(key: string, event: Event): void {
@@ -1327,7 +1389,7 @@ export class DataGrid<TRow> {
         }
         return [...seen.entries()]
             .map(([value, label]) => ({ value, label }))
-            .sort((a, b) => a.label.localeCompare(b.label));
+            .sort((a, b) => this._collator.compare(a.label, b.label));
     }
 
     /**
@@ -1473,7 +1535,10 @@ export class DataGrid<TRow> {
             if (group) group.rows.push(row);
             else groups.set(key, { label: col ? this._displayText(col, row) : key, rows: [row] });
         }
-        return new Map([...groups.entries()].sort((a, b) => a[1].label.localeCompare(b[1].label)));
+        // Ordered by the label, so the groups read alphabetically in the language on
+        // screen -- which does mean two languages show the same table in a different
+        // group order, while the keys underneath, and any saved view, stay put.
+        return new Map([...groups.entries()].sort((a, b) => this._collator.compare(a[1].label, b[1].label)));
     }
 
     private _groupRow(key: string, label: string, count: number): HTMLTableRowElement {
@@ -1481,9 +1546,14 @@ export class DataGrid<TRow> {
         tr.className = this._collapsed.has(key) ? 'grid-group is-collapsed' : 'grid-group';
         tr.dataset.group = key;
 
+        const collapsed = this._collapsed.has(key);
         const td = document.createElement('td') as HTMLTableCellElement;
         td.colSpan = this.visibleColumns().length;
-        td.textContent = `${this._collapsed.has(key) ? '▸' : '▾'} ${label} (${count})`;
+        const content = this.options.groupHeader
+            ? this.options.groupHeader(label, count, collapsed)
+            : `${collapsed ? '▸' : '▾'} ${label} (${count})`;
+        if (typeof content === 'string') td.textContent = content;
+        else td.appendChild(content);
         tr.appendChild(td);
 
         tr.addEventListener('click', () => this.toggleGroup(key));

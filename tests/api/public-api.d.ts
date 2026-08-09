@@ -274,14 +274,20 @@ export interface GridMenuLabels {
     showAllColumns: string;
     groupBy: string;
     ungroup: string;
-    filterByValue: string;
+    /**
+     * Names the value under the pointer. A function rather than a string because the
+     * line is two pieces joined, and what joins them is a language's business: a
+     * Chinese UI wants a full-width colon, and some languages want the value first.
+     */
+    filterByValue(text: string): string;
     filterRule: string;
     showFilters: string;
     hideFilters: string;
     clearFilters: string;
     copyCell: string;
     copyRow: string;
-    copyRows: string;
+    /** Names how many rows go. A function for the same reason as `filterByValue`. */
+    copyRows(count: number): string;
     exportXlsx: string;
 }
 /** How many rows a user may have selected at once. */
@@ -396,6 +402,23 @@ export interface GridOptions<TRow> {
      */
     reorderable?: boolean;
     /**
+     * The language the table is written in, as a BCP 47 tag. It decides the order of
+     * everything compared as text -- the sort, the groups, a set filter's option list
+     * -- so a page rendered in German orders the same way for every visitor instead of
+     * following whatever locale their browser happens to be set to.
+     *
+     * Left out, the collator takes the document's own language.
+     */
+    locale?: string;
+    /** A collator of your own, when the default (numeric, case-folding) is not it. */
+    collator?: Intl.Collator;
+    /**
+     * The line a group header shows. The default reads `▾ Buy (14)`; override it for a
+     * language that writes counts differently, or return a Node to put a real chevron
+     * element in place of the triangle.
+     */
+    groupHeader?(label: string, count: number, collapsed: boolean): string | Node;
+    /**
      * Show the row of filter boxes under the header. Off by default: the rule dialog
      * says everything the row can and more -- an operator, not just a substring -- and
      * a row of boxes costs a line of vertical space on every table that has one. Turn
@@ -477,6 +500,16 @@ export declare class DataGrid<TRow> {
     setSelection(keys: string[]): void;
     clearSelection(): void;
     /**
+     * Let the grid go. Everything it put outside its own two elements comes off: the
+     * Ctrl+C binding on the document, and any menu or filter popup still open.
+     *
+     * A host needs this whenever it replaces a grid rather than updating one -- the
+     * columns are declared once, so re-declaring them (translated headers, a different
+     * set of columns) means a new grid over the same table, and the old one would go
+     * on answering Ctrl+C from beyond the grave.
+     */
+    destroy(): void;
+    /**
      * Open the rule dialog for a column -- an operator and its operand, which is what
      * the inline row cannot express without growing a second control per column.
      */
@@ -554,7 +587,11 @@ export interface GridFilterDialogClasses {
 }
 /** Every phrase the dialog shows. */
 export interface GridFilterDialogLabels {
-    title: string;
+    /**
+     * Heads the dialog with the column it is filtering. A function because joining a
+     * word to a column name is a language's business, down to the colon.
+     */
+    title(header: string): string;
     apply: string;
     clear: string;
     cancel: string;
@@ -620,7 +657,7 @@ export interface SortSpec {
 export declare class TableSort<TRow = unknown> {
     col: string | null;
     dir: SortDir;
-    constructor(headerEl: HTMLElement | null, accessors: Record<string, (row: TRow) => unknown>, onChange: () => void, defaultSort: SortSpec | null);
+    constructor(headerEl: HTMLElement | null, accessors: Record<string, (row: TRow) => unknown>, onChange: () => void, defaultSort: SortSpec | null, collator: Intl.Collator);
     /**
      * Sorted copy of rows by the effective sort (explicit column or table default). Rows with no
      * value for the sort column group at the end. Always a copy: a caller told its array is never

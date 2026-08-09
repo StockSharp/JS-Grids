@@ -275,4 +275,39 @@ describe('DataGrid filters', () => {
         grid.setFilter('qty', { min: 0, max: 10 });
         assert.deepEqual(shownIds(body), ['1', '4']);
     });
+
+    it('orders text by collation, the way the column is sorted', () => {
+        const head = new FakeElement('thead');
+        const body = new FakeElement('tbody');
+        interface Word { id: number; word: string; }
+        const grid = new DataGrid<Word>({
+            head: asDom(head),
+            body: asDom(body),
+            columns: [{ key: 'word', header: 'Word', exportable: true, filter: 'text', value: r => r.word }],
+            defaultSort: { col: 'word', dir: 'asc' },
+            rowKey: r => String(r.id),
+            emptyText: 'none',
+            locale: 'de',
+        });
+        grid.setRows([{ id: 1, word: 'apfel' }, { id: 2, word: 'Äpfel' }, { id: 3, word: 'zebra' }]);
+
+        // 'ä' is U+00E4, so a raw `>` puts it after 'z' and this filter would answer
+        // with the accented rows -- the opposite of where the column shows them.
+        grid.setFilter('word', { op: 'gt', text: 'zebra' });
+        assert.deepEqual(grid.displayRows().map(r => r.id), []);
+
+        grid.setFilter('word', { op: 'lt', text: 'zebra' });
+        assert.deepEqual(grid.displayRows().map(r => r.id).sort(), [1, 2]);
+    });
+
+    it('folds case in the ordering rules, as it already did in the others', () => {
+        const { grid } = makeGrid();
+
+        // `eq` has always ignored case; `>=` comparing raw code units did not, so the
+        // same column answered two different questions depending on the rule picked.
+        grid.setFilter('symbol', { op: 'ge', text: 'aapl' });
+        const shown = grid.displayRows().map(r => r.symbol);
+
+        assert.ok(shown.includes('AAPL'), 'AAPL is not below aapl');
+    });
 });

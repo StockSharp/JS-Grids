@@ -277,4 +277,17 @@ describe('DataGrid selection', () => {
 
         assert.ok(fakeDocument.clipboard.includes('AAPL'), 'the shortcut has to reach the clipboard');
     });
+
+    it('lets go of the document when destroyed', () => {
+        const { grid, body } = makeGrid({ selection: 'multi' });
+        click(body, 0);
+
+        grid.destroy();
+        fakeDocument.clipboard = '';
+        fireOnDocument({ type: 'keydown', code: 'KeyC', key: 'c', ctrlKey: true, preventDefault: () => {} } as never);
+
+        // A host that swaps one grid for another -- translated headers, a different
+        // column set -- would otherwise leave the old one answering Ctrl+C forever.
+        assert.equal(fakeDocument.clipboard, '');
+    });
 });

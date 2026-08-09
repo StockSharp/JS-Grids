@@ -15,13 +15,17 @@ interface Row {
     price?: number;
 }
 
+// Text ordering is a language's business, so the caller hands one in rather than
+// letting each comparison fall back to whatever locale the machine is set to.
+const COLLATOR = new Intl.Collator('en', { numeric: true, sensitivity: 'accent' });
+
 const accessors = {
     id: (o: Row) => o.localId ?? o.id,
     price: (o: Row) => o.price,
 };
 
 function make(defaultSort: SortSpec | null): TableSort<Row> {
-    return new TableSort<Row>(null, accessors, () => {}, defaultSort);
+    return new TableSort<Row>(null, accessors, () => {}, defaultSort, COLLATOR);
 }
 
 /// A <thead> carrying one sortable header per key, the markup TableSort binds to.
@@ -50,7 +54,7 @@ function clickHeader(head: FakeElement, key: string): void {
 }
 
 function attach(head: FakeElement, defaultSort: SortSpec | null): TableSort<Row> {
-    return new TableSort<Row>(asDom<HTMLElement>(head), accessors, () => {}, defaultSort);
+    return new TableSort<Row>(asDom<HTMLElement>(head), accessors, () => {}, defaultSort, COLLATOR);
 }
 
 describe('TableSort — default (resting) order', () => {
@@ -124,7 +128,7 @@ describe('TableSort — default (resting) order', () => {
     it('falls back to reading the row by the column key when no accessor is declared', () => {
         // DataGrid declares an accessor per column, but TableSort is usable on its own
         // over a plain <th data-sort="price"> whose rows are plain objects.
-        const sort = new TableSort<Row>(null, {}, () => {}, { col: 'price', dir: SortDirections.Asc });
+        const sort = new TableSort<Row>(null, {}, () => {}, { col: 'price', dir: SortDirections.Asc }, COLLATOR);
         const rows: Row[] = [{ price: 30 }, { price: 10 }, { price: 20 }];
         assert.deepStrictEqual(sort.apply(rows).map(r => r.price), [10, 20, 30]);
     });

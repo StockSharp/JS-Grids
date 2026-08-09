@@ -41,13 +41,21 @@ export class TableSort<TRow = unknown> {
     private _accessors: Record<string, (row: TRow) => unknown>;
     private _onChange: () => void;
     private _default: SortSpec | null;
+    private readonly _collator: Intl.Collator;
 
     // `defaultSort` is the order applied when no header is explicitly selected — the table's
     // resting sort. Pass null only for a table that genuinely has no meaningful default (raw row
     // order); every real blotter should name one so its first paint is deterministic.
-    constructor(headerEl: HTMLElement | null, accessors: Record<string, (row: TRow) => unknown>, onChange: () => void, defaultSort: SortSpec | null) {
+    constructor(
+        headerEl: HTMLElement | null,
+        accessors: Record<string, (row: TRow) => unknown>,
+        onChange: () => void,
+        defaultSort: SortSpec | null,
+        collator: Intl.Collator,
+    ) {
         this.col = null;
         this.dir = SortDirections.Asc;
+        this._collator = collator;
         this._headerEl = headerEl;
         this._accessors = accessors || {};
         this._onChange = onChange;
@@ -92,15 +100,18 @@ export class TableSort<TRow = unknown> {
             if (aEmpty && bEmpty) return 0;
             if (aEmpty) return 1;      // empties sink regardless of direction
             if (bEmpty) return -1;
-            return TableSort._compare(av, bv) * factor;
+            return this._compare(av, bv) * factor;
         });
     }
 
-    private static _compare(a: unknown, b: unknown): number {
+    private _compare(a: unknown, b: unknown): number {
         const an = typeof a === 'number' ? a : Number(a);
         const bn = typeof b === 'number' ? b : Number(b);
         if (isFinite(an) && isFinite(bn)) return an - bn;
-        return String(a).localeCompare(String(b));
+        // Through the collator the caller handed over, so the order matches the
+        // language the table is written in rather than whatever the visitor's browser
+        // happens to be set to -- and so it is built once instead of per comparison.
+        return this._collator.compare(String(a), String(b));
     }
 
     /**

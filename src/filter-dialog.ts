@@ -31,7 +31,11 @@ export interface GridFilterDialogClasses {
 
 /** Every phrase the dialog shows. */
 export interface GridFilterDialogLabels {
-    title: string;
+    /**
+     * Heads the dialog with the column it is filtering. A function because joining a
+     * word to a column name is a language's business, down to the colon.
+     */
+    title(header: string): string;
     apply: string;
     clear: string;
     cancel: string;
@@ -55,7 +59,7 @@ const DEFAULT_CLASSES: Required<GridFilterDialogClasses> = {
 };
 
 const DEFAULT_LABELS: GridFilterDialogLabels = {
-    title: 'Filter',
+    title: header => `Filter: ${header}`,
     apply: 'Apply',
     clear: 'Clear',
     cancel: 'Cancel',
@@ -146,7 +150,7 @@ export class GridFilterDialog {
 
         const title = document.createElement('div');
         title.className = this._classes.title;
-        title.textContent = `${this._labels.title}: ${options.header}`;
+        title.textContent = this._labels.title(options.header);
         el.appendChild(title);
 
         const row = document.createElement('div');

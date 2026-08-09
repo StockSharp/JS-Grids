@@ -189,6 +189,8 @@ lines in every host, and none of them are about tables.
 
 ![The grid's context menu with a host item on top](screenshots/context-menu.jpg)
 
+![The filter rule popup on a column of values](screenshots/filter-dialog.jpg)
+
 `contextMenu: true` gives you sort, group, filter by the value under the pointer,
 hide the column, show all, copy cell, copy row and export. A host can restyle it,
 reword it, add to it, or refuse it for a click:
@@ -218,6 +220,54 @@ resting order (`defaultSort`), so a first paint is meaningful instead of exposin
 the raw arrival order of a cache hydration, a snapshot and live updates. Rows
 with no value for the sorted column sink to the end in both directions, and
 `apply()` always returns a copy, so the caller's array is never reordered.
+
+Text is compared through one `Intl.Collator`, built from the `locale` option (or
+the document's own `lang`), and the same one orders the groups and the list a set
+filter offers, and answers the `>` `≥` `<` `≤` filter rules. That is one collator
+rather than four comparisons because they are all about the same column: raw `>`
+on strings is UTF-16 order, which puts every accented letter after `z` and every
+Cyrillic capital before every small letter — so a table shown in one order would
+filter in another. It is `numeric`, so a text column of ids reads 1, 2, 10, and
+case-folding, so `≥ "aapl"` matches `AAPL` the way `= "aapl"` already did.
+
+## Language
+
+The grid ships English defaults and takes every word of them from the host:
+
+```ts
+new DataGrid<Order>({
+  // ...
+  locale: 'zh-CN',
+  emptyText: '暂无委托',
+  columns: [{ key: 'side', header: '方向', text: o => (o.side === 0 ? '买入' : '卖出'), /* ... */ }],
+  contextMenu: {
+    labels: { sortAsc: '升序排列', filterByValue: (text) => `按此值筛选：${text}`, /* ... */ },
+    filterDialog: { labels: { title: (header) => `筛选：${header}`, apply: '应用', /* ... */ } },
+  },
+  groupHeader: (label, count, collapsed) => `${collapsed ? '▸' : '▾'} ${label}（${count}）`,
+});
+```
+
+The labels that join two pieces — `filterByValue`, `copyRows`, the dialog's
+`title` — are **functions of what they join**, not strings the grid concatenates
+onto. A Chinese UI writes a full-width colon and full-width brackets, and some
+languages want the value first; neither is expressible if the package owns the
+punctuation.
+
+Columns are declared once, so translated headers mean a new grid over the same
+table. Call **`destroy()`** on the old one first — it takes back the Ctrl+C
+binding it put on the document and closes anything it had open — then carry the
+arrangement across with `getState()` / `setState()`. That works because the state
+is written in column keys and raw values, never in anything on screen: a table
+grouped by side and filtered to one board comes back grouped and filtered, now
+reading 卖出. Group **order**, though, follows the labels, so two languages show
+the same table in a different order — the keys underneath do not move.
+
+`demo/i18n.js` is a worked example of the split: what the package would have said
+in English, versus the headers, cell words and prose that were always the host's.
+The demo's language button switches between them live.
+
+![The same table in Chinese, still grouped by side](screenshots/chinese.jpg)
 
 ## Server-rendered tables
 
