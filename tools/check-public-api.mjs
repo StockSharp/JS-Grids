@@ -66,9 +66,35 @@ function normalize(value) {
     return value.replaceAll('\r\n', '\n');
 }
 
+/// Drops private members, and the doc comment that came with them: tsc emits the
+/// comment above a declaration it is about to strip, which left the snapshot
+/// documenting methods nobody outside the class can call.
 function publicDeclarations(value) {
-    return normalize(value)
-        .split('\n')
-        .filter((line) => !/^\s+private(?:\s|$)/.test(line))
-        .join('\n');
+    const kept = [];
+    let comment = [];
+
+    for (const line of normalize(value).split('\n')) {
+        if (comment.length === 0 && /^\s*\/\*\*/.test(line) && !/\*\//.test(line)) {
+            comment.push(line);
+            continue;
+        }
+        if (comment.length > 0) {
+            comment.push(line);
+            if (!/\*\//.test(line)) continue;
+            // The block is closed; whether it survives depends on what follows it.
+            const block = comment;
+            comment = [];
+            kept.push({ pending: block });
+            continue;
+        }
+
+        const isPrivate = /^\s+private(?:\s|$)/.test(line);
+        const pending = kept.length > 0 && kept[kept.length - 1].pending;
+        if (pending) kept.pop();
+        if (isPrivate) continue;
+        if (pending) kept.push(...pending.map(text => ({ text })));
+        kept.push({ text: line });
+    }
+
+    return [...kept.filter(entry => entry.text !== undefined).map(entry => entry.text), ...comment].join('\n');
 }

@@ -3,10 +3,19 @@ export { DataGrid, GridPinnedPlacements } from './data-grid.js';
 export type {
     GridColumn,
     GridExportData,
+    GridFilter,
+    GridFilterKind,
+    GridFilterOp,
+    GridMenuContext,
+    GridMenuLabels,
+    GridMenuOptions,
     GridOptions,
     GridPinnedCell,
     GridPinnedPlacement,
     GridPinnedRow,
+    GridSelectionMode,
+    GridState,
+    GridValueOption,
 } from './data-grid.js';
 
 export { SortDirections, TableSort } from './table-sort.js';

@@ -56,7 +56,7 @@ grid.download('orders', 'Orders');   // orders-20260807-120000.xlsx
 The package also ships a ready-to-use browser bundle exposed as `window.SSGrid`:
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@stocksharp/grids@0.1.0/dist/ssgrid.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@stocksharp/grids@1.0.0/dist/ssgrid.js"></script>
 <script>
   const { DataGrid } = window.SSGrid;
 </script>
@@ -98,13 +98,14 @@ so a host can re-subscribe to the symbols now on screen.
 
 ## What the user can do to a table
 
-Everything below is off unless the declaration asks for it, and all of it is in
-`getState()` — so a table comes back the way somebody left it.
+Everything below is off unless the declaration asks for it, and the arrangement it
+produces is in `getState()` — so a table comes back the way somebody left it.
 
 ```ts
 const grid = new DataGrid<Order>({
   // ...
   reorderable: true,          // drag a header to move its column
+  filtersVisible: true,       // the row of filter boxes; off by default, see below
   selection: 'multi',         // 'none' (default) | 'single' | 'multi'
   selectedClass: 'is-selected',
   contextMenu: true,          // the grid's own menu, see below
@@ -120,7 +121,8 @@ grid.setState(JSON.parse(localStorage.getItem('orders') || '{}'));
 | `setFilter(key, filter)` `clearFilters()` | per-column filters — see below |
 | `groupBy(key)` `toggleGroup(value)` | single-level grouping, collapsible |
 | `setSelection(keys)` `selectedKeys()` `selectedRows()` | selection, held by row key |
-| `getState()` `setState(state)` | all of the above, as plain JSON |
+| `showFilters(visible)` `filtersVisible()` | the row of filter boxes under the header |
+| `getState()` `setState(state)` | the arrangement above, as plain JSON |
 
 Three things about the state are worth knowing before you store it. Unknown column
 keys are **dropped rather than rejected**, so a view saved before a deploy that
@@ -131,18 +133,28 @@ on every page load.
 
 Selection is held by **row key**, not by index or element — which is what makes it
 survive a repaint that rebuilds every `<tr>`, and a filter that takes a row off
-screen and later brings it back.
+screen and later brings it back. It is **not** part of `getState()`: a stored view
+is how a table is arranged, and which rows were highlighted when somebody closed
+the tab is not that. Persist it separately if you want it back — `onSelectionChange`
+hands you the keys, `setSelection(keys)` puts them back.
 
 ## Filters
 
-A column declares which control it wants; the grid draws the row under the header
-and does the filtering:
+A column declares which control it wants, and the grid does the filtering:
 
 ```ts
 { key: 'symbol', header: 'Symbol', filter: 'text',   exportable: true, value: o => o.symbol }
 { key: 'pnl',    header: 'P&L',    filter: 'number', exportable: true, value: o => o.pnl }
 { key: 'board',  header: 'Board',  filter: 'set',    exportable: true, value: o => o.board }
 ```
+
+There are two ways in, and the popup is the main one: a right-click on a column
+offers **Filter…**, which asks for an operator and its operand — `contains`,
+`starts with`, `>`, `between`, `is empty`, and on a `set` column a list of the
+values present, ticked. The row of boxes under the header is the quick one, and it
+is **off by default** (`filtersVisible: true` turns it on, `showFilters(visible)`
+toggles it at runtime, and the menu carries the same toggle): it costs a line of
+vertical space on every table, and everything it can say the popup can say better.
 
 A filter is plain data — `{ text }`, `{ min, max }`, `{ values }` — rather than a
 predicate, and deliberately so: a closure cannot be written to a store, so a table
@@ -157,8 +169,12 @@ grid.groupBy('board');     // a collapsible header per distinct value, with a co
 grid.groupBy(null);        // flat again
 ```
 
-Groups run in value order while the rows inside each keep the sort the user
-picked. `renderLimit` counts rows of data rather than headers, and the export
+Groups run in label order while the rows inside each keep the sort the user
+picked. A group is **keyed by the value and labelled by the text**, so a column
+holding a code and showing a word — a side held as `0`, read as `Buy` — heads its
+groups `Buy` rather than `0`. Declare `text(row)` on such a column and the header,
+the set filter's list and the menu's filter-by-this-value line all read from it,
+while `value` stays what the grid sorts, groups and compares by. `renderLimit` counts rows of data rather than headers, and the export
 follows the on-screen order but drops the header rows — a spreadsheet has its own
 grouping, and a label row in the middle of the range breaks every formula pointed
 at it.
@@ -294,7 +310,7 @@ published inside the package:
 ```json
 {
   "dependencies": {
-    "@stocksharp/grids": "^0.1.0"
+    "@stocksharp/grids": "^1.0.0"
   }
 }
 ```

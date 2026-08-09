@@ -121,10 +121,6 @@ export declare class GridContextMenu {
      */
     open(items: GridMenuItem[], x: number, y: number): void;
     close(): void;
-    /**
-     * Nudge the menu back inside the window when it was opened near an edge.
-     * Measured after it is in the document, because until then it has no size.
-     */
 }
 
 // FILE: data-grid.d.ts
@@ -536,25 +532,6 @@ export declare class DataGrid<TRow> {
     exportData(): GridExportData;
     /** Export to `<baseName>-<timestamp>.xlsx` in the order on screen. */
     download(baseName: string, sheetName: string): void;
-    /**
-     * The row of filter controls, or null when no visible column declares one.
-     *
-     * Every visible column gets a cell even when it has no filter, or the row would
-     * shear away from the captions above it. The cells carry no `data-sort`, so a
-     * click inside one does not reach the sort handler bound on the `<thead>`.
-     */
-    /**
-     * Put the stored filters back into the controls without rebuilding the row.
-     * Rebuilding it would take the focus and the caret out of the box the user is
-     * still typing in.
-     */
-    /**
-     * Drag a header to move its column in front of the one it is dropped on.
-     *
-     * The dragged key lives on the instance rather than in dataTransfer: the payload
-     * is this grid's, and reading it back out of the event would mean a header
-     * dragged from anywhere -- another grid, another window -- could reorder this one.
-     */
 }
 
 // FILE: filter-dialog.d.ts
@@ -607,7 +584,7 @@ export declare class GridFilterDialog {
 
 // FILE: index.d.ts
 export { DataGrid, GridPinnedPlacements } from './data-grid.js';
-export type { GridColumn, GridExportData, GridOptions, GridPinnedCell, GridPinnedPlacement, GridPinnedRow, } from './data-grid.js';
+export type { GridColumn, GridExportData, GridFilter, GridFilterKind, GridFilterOp, GridMenuContext, GridMenuLabels, GridMenuOptions, GridOptions, GridPinnedCell, GridPinnedPlacement, GridPinnedRow, GridSelectionMode, GridState, GridValueOption, } from './data-grid.js';
 export { SortDirections, TableSort } from './table-sort.js';
 export type { SortDir, SortSpec } from './table-sort.js';
 export { ColumnSettings } from './column-settings.js';
