@@ -12,6 +12,7 @@ writer.
 
 ![A blotter with a filter row, selected rows and pinned totals](screenshots/blotter.jpg)
 
+[Live demo](https://stocksharp.github.io/JS-Grids/demo/) ·
 [StockSharp website](https://stocksharp.com/) ·
 [GitHub repository](https://github.com/StockSharp/JS-Grids) ·
 [Issue tracker](https://github.com/StockSharp/JS-Grids/issues)
@@ -265,7 +266,8 @@ the same table in a different order — the keys underneath do not move.
 
 `demo/i18n.js` is a worked example of the split: what the package would have said
 in English, versus the headers, cell words and prose that were always the host's.
-The demo's language button switches between them live.
+The demo's language button switches between them live — try it on the
+[live demo](https://stocksharp.github.io/JS-Grids/demo/).
 
 ![The same table in Chinese, still grouped by side](screenshots/chinese.jpg)
 
@@ -406,6 +408,8 @@ Dedicated entry points are available for consumers with narrower needs:
 npm ci
 npm test
 npm run build
+npm run serve                       # the demo on http://localhost:8793/demo/
+node tools/screenshots.mjs          # what the README screenshots would be; --apply writes them
 npm run pack:check
 npm run release:patch
 npm run release:minor
@@ -415,7 +419,10 @@ npm run api:update  # only after reviewing an intentional public API change
 ```
 
 CI verifies type checking, the reviewed declaration snapshot, the unit tests, the
-bundles and the tarball contents.
+bundles and the tarball contents. `pages.yml` builds the same bundle and publishes
+`demo/` to GitHub Pages on every push to `main`, which is where the live demo link
+at the top goes; it needs Pages enabled for the repository with **Source: GitHub
+Actions**.
 
 Publishing is driven by the version in `package.json`. `release.yml` runs on
 every push to `main` and publishes only when that version is not yet on npm, so
