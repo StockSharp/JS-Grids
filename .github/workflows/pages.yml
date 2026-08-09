@@ -2,7 +2,11 @@ name: Deploy demo to GitHub Pages
 
 # Builds the ssgrid bundle and publishes the demo, so the page in the README is a
 # thing you can click rather than a screenshot: https://stocksharp.github.io/JS-Grids/demo/
-# Requires Pages to be enabled for the repo with "Source: GitHub Actions".
+#
+# Pages has to be switched on for the repository before anything can be deployed
+# to it, and the configure step below does that itself rather than leaving a
+# workflow that fails until somebody visits the settings page. If the account
+# forbids it, turn it on by hand: Settings -> Pages -> Source: GitHub Actions.
 
 on:
   push:
@@ -25,6 +29,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+        if: github.event_name != 'pull_request'
+        with:
+          enablement: true
       - uses: actions/setup-node@v4
         with:
           node-version: 22
