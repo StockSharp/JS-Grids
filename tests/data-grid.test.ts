@@ -420,3 +420,44 @@ describe('DataGrid — empty state and element lookup', () => {
         assert.equal(grid.cellElement('1', 'symbol'), null);
     });
 });
+
+/// Where a group sits among the others.
+///
+/// Alphabetical is right for a column of names and wrong for a table whose order means
+/// something: a strategy's statistics run profit, then trades, then orders, and re-alphabetising
+/// that loses the arrangement the reader was given.
+describe('DataGrid — group order', () => {
+    const ROWS: Order[] = [
+        { id: 1, symbol: 'Zulu', side: 0, price: 1 },
+        { id: 2, symbol: 'Alpha', side: 1, price: 2 },
+        { id: 3, symbol: 'Zulu', side: 0, price: 3 },
+    ];
+
+    const captions = (body: FakeElement): string[] =>
+        body.childNodes
+            .filter(n => ((n as FakeElement).className ?? '').includes('grid-group'))
+            .map(n => ((n as FakeElement).textContent ?? '').replace(/[^A-Za-z]/g, ''));
+
+    it('reads alphabetically by default', () => {
+        const { grid, body } = makeGrid(ROWS, { defaultSort: { col: 'id', dir: 'asc' } });
+        grid.setState({ group: 'symbol' });
+
+        assert.deepStrictEqual(captions(body), ['Alpha', 'Zulu']);
+    });
+
+    it('keeps the order the rows are in when asked for it', () => {
+        // Sorted by id, Zulu comes first — and with groupOrder 'rows' it stays first.
+        const { grid, body } = makeGrid(ROWS, { defaultSort: { col: 'id', dir: 'asc' }, groupOrder: 'rows' });
+        grid.setState({ group: 'symbol' });
+
+        assert.deepStrictEqual(captions(body), ['Zulu', 'Alpha']);
+    });
+
+    it('follows the sort, so re-sorting re-lays the groups', () => {
+        const { grid, body } = makeGrid(ROWS, { defaultSort: { col: 'price', dir: 'desc' }, groupOrder: 'rows' });
+        grid.setState({ group: 'symbol' });
+
+        // Highest price first is Zulu(3), then Alpha(2) — the same order the rows read in.
+        assert.deepStrictEqual(captions(body), ['Zulu', 'Alpha']);
+    });
+});

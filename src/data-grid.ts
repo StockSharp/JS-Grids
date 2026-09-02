@@ -354,6 +354,14 @@ export interface GridOptions<TRow> {
      */
     renderLimit?: number;
     /**
+     * Where a group sits among the others. `label` (the default) reads them
+     * alphabetically, which is what a reader expects of a column of names. `rows` leaves
+     * them in the order the sorted rows present them, for a table whose order carries
+     * meaning of its own -- a strategy's statistics run profit, then trades, then orders,
+     * and alphabetising that says nothing and loses something.
+     */
+    groupOrder?: 'label' | 'rows';
+    /**
      * Called once the body has been repainted. The grid owns the header
      * listener, so a sort click re-renders without the caller being involved —
      * this is the only hook a caller has for work that depends on *which rows
@@ -1617,7 +1625,13 @@ export class DataGrid<TRow> {
             if (group) group.rows.push(row);
             else groups.set(key, { label: col ? this._displayText(col, row) : key, rows: [row] });
         }
-        // Ordered by the label, so the groups read alphabetically in the language on
+        // Groups whose order is not their own are left where the sort put them: the first
+        // row of each group decides, so the groups appear in the order the rows already
+        // read in. A table sorted by something the reader chose keeps that arrangement
+        // instead of being re-alphabetised behind their back.
+        if (this.options.groupOrder === 'rows') return groups;
+
+        // Otherwise by the label, so the groups read alphabetically in the language on
         // screen -- which does mean two languages show the same table in a different
         // group order, while the keys underneath, and any saved view, stay put.
         return new Map([...groups.entries()].sort((a, b) => this._collator.compare(a[1].label, b[1].label)));

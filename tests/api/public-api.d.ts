@@ -389,6 +389,14 @@ export interface GridOptions<TRow> {
      */
     renderLimit?: number;
     /**
+     * Where a group sits among the others. `label` (the default) reads them
+     * alphabetically, which is what a reader expects of a column of names. `rows` leaves
+     * them in the order the sorted rows present them, for a table whose order carries
+     * meaning of its own -- a strategy's statistics run profit, then trades, then orders,
+     * and alphabetising that says nothing and loses something.
+     */
+    groupOrder?: 'label' | 'rows';
+    /**
      * Called once the body has been repainted. The grid owns the header
      * listener, so a sort click re-renders without the caller being involved —
      * this is the only hook a caller has for work that depends on *which rows
