@@ -427,3 +427,29 @@ tr.sel td { background: #1d2a3d; }
 .grid-filter-dialog-values-item:hover {
 	background: var(--t-header);
 }
+
+/* ------------------------------------------------------------------ scrollbars */
+
+/* The page's own, painted from the same tokens as everything else on it. The grid creates no
+   scroll container — it renders a table and the box around it is this page's — so unlike the
+   cursor on a group header, this one really is the demo's to declare. Both spellings: the
+   standard properties are what Firefox reads, the pseudo-elements are what Chromium does. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--t-border) transparent;
+}
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+
+::-webkit-scrollbar-thumb {
+  background: var(--t-border);
+  border-radius: 4px;
+  /* Transparent inset border, clipped to the content box, so the thumb reads as a handle in a
+     gutter rather than as a filled column. */
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover { background: var(--t-text-dim); background-clip: content-box; }
+::-webkit-scrollbar-corner { background: transparent; }
