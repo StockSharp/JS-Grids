@@ -1653,6 +1653,13 @@ export class DataGrid<TRow> {
         tr.appendChild(td);
 
         tr.addEventListener('click', () => this.toggleGroup(key));
+        // Set here rather than left to a stylesheet, because this package ships none: a cursor
+        // an adopter has to declare is a cursor the next adopter forgets, and the row would then
+        // act on a click while telling the pointer it does nothing. The two properties belong to
+        // the handler above, not to a theme - what the row LOOKS like is still the adopter's,
+        // through `grid-group`, and a rule there overrides these.
+        tr.style.cursor = 'pointer';
+        tr.style.userSelect = 'none';
         return tr;
     }
 

@@ -91,7 +91,10 @@ export class FakeElement {
     readonly nodeType = 1;
     readonly tagName: string;
     readonly attributes: Record<string, string> = {};
-    readonly style: { display: string } = { display: '' };
+    // The properties the grid actually sets, named rather than left open: an `any` here would
+    // let a typo in a style name pass the tests and reach a browser.
+    readonly style: { display: string; cursor: string; userSelect: string } =
+        { display: '', cursor: '', userSelect: '' };
     childNodes: FakeNode[] = [];
     parentNode: FakeElement | null = null;
     className = '';

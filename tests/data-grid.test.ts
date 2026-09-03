@@ -421,6 +421,44 @@ describe('DataGrid — empty state and element lookup', () => {
     });
 });
 
+/// A group header toggles its group, and the grid puts that click on the whole row. The
+/// affordance has to travel with the handler: this package ships no stylesheet, so a cursor left
+/// to the adopter is a cursor every adopter has to rediscover - and the first one to forget gets
+/// a row that acts on click while telling the pointer it does nothing.
+describe('DataGrid — a group header says it is clickable', () => {
+    const ROWS: Order[] = [
+        { id: 1, symbol: 'Zulu', side: 0, price: 1 },
+        { id: 2, symbol: 'Alpha', side: 1, price: 2 },
+    ];
+
+    const groupRows = (body: FakeElement): FakeElement[] =>
+        body.childNodes.filter(n => ((n as FakeElement).className ?? '').includes('grid-group')) as FakeElement[];
+
+    it('points at the hand, on the row the click is bound to', () => {
+        const { grid, body } = makeGrid(ROWS, {});
+        grid.setState({ group: 'symbol' });
+
+        const rows = groupRows(body);
+        assert.equal(rows.length, 2);
+        for (const row of rows) assert.equal(row.style.cursor, 'pointer');
+    });
+
+    it('does not select its caption under a second click', () => {
+        const { grid, body } = makeGrid(ROWS, {});
+        grid.setState({ group: 'symbol' });
+
+        for (const row of groupRows(body)) assert.equal(row.style.userSelect, 'none');
+    });
+
+    it('says the same after a collapse, because the row is rebuilt', () => {
+        const { grid, body } = makeGrid(ROWS, {});
+        grid.setState({ group: 'symbol' });
+        grid.toggleGroup('Zulu');
+
+        for (const row of groupRows(body)) assert.equal(row.style.cursor, 'pointer');
+    });
+});
+
 /// Where a group sits among the others.
 ///
 /// Alphabetical is right for a column of names and wrong for a table whose order means
