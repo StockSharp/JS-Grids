@@ -444,6 +444,21 @@ export interface GridOptions<TRow> {
     onStateChange?(state: GridState): void;
 }
 
+/// Whether a press landed on something that answers a press itself.
+///
+/// Named tags rather than a check for a listener, because there is no way to ask an element
+/// whether it has one - and these are the tags a host puts in a cell when it wants the user to
+/// act on the row rather than merely select it.
+const CONTROL_TAGS = ['SELECT', 'INPUT', 'BUTTON', 'TEXTAREA', 'A', 'OPTION', 'LABEL'];
+
+function isControl(event: { target?: unknown }): boolean {
+    const target = event.target as { tagName?: string; isContentEditable?: boolean } | null | undefined;
+    if (target === null || target === undefined) return false;
+    if (target.isContentEditable === true) return true;
+    return CONTROL_TAGS.includes(String(target.tagName ?? '').toUpperCase());
+}
+
+
 export class DataGrid<TRow> {
     readonly options: GridOptions<TRow>;
     readonly sort: TableSort<TRow>;
@@ -1546,6 +1561,12 @@ export class DataGrid<TRow> {
             tr.addEventListener('mousedown', (event: Event) => {
                 const button = (event as unknown as { button?: number }).button;
                 if (button !== undefined && button !== 0) return;   // right-click belongs to the menu
+                // A cell may hold a real control, and the press that opens a <select> or focuses
+                // an <input> is the same press selection answers. preventDefault below is what
+                // stops the browser dragging a text selection across the rows - done to a press
+                // that landed on a control, it also stops the control reacting at all, so the
+                // row selects and the control reads as dead.
+                if (isControl(event as unknown as { target?: unknown })) return;
                 event.preventDefault();
                 DataGrid._active = this as DataGrid<unknown>;
                 this._clickRow(key, event);

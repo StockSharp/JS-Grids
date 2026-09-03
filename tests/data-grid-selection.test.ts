@@ -291,3 +291,60 @@ describe('DataGrid selection', () => {
         assert.equal(fakeDocument.clipboard, '');
     });
 });
+
+// A cell may hold a real control — a select the host renders for an editable column, a button,
+// an input. Selection answers `mousedown` and calls preventDefault to stop the browser dragging
+// a text selection across the rows; done to a press that landed on a control, that same
+// preventDefault is what stops a `<select>` opening its list and taking focus. The row then
+// selects and the control does nothing, which reads as a dead control.
+describe('DataGrid selection — a control in a cell keeps its press', () => {
+    /// A press that a control would receive: the target is the control, not the row.
+    const pressOn = (body: FakeElement, index: number, control: FakeElement) => {
+        const tr = body.children[index];
+        let prevented = false;
+        tr.dispatchEvent({
+            type: 'mousedown', target: control, button: 0,
+            preventDefault: () => { prevented = true; },
+        });
+        return prevented;
+    };
+
+    const withControl = (tag: string) => {
+        const { grid, body } = makeGrid({ selection: 'multi' });
+        const control = new FakeElement(tag);
+        body.children[0].appendChild(asDom(control) as unknown as never);
+        return { grid, body, control };
+    };
+
+    for (const tag of ['select', 'input', 'button', 'textarea', 'a']) {
+        it(`leaves a press on <${tag}> alone`, () => {
+            const { grid, body, control } = withControl(tag);
+
+            const prevented = pressOn(body, 0, control);
+
+            assert.equal(prevented, false, 'the press belongs to the control');
+            assert.deepEqual(grid.selectedKeys(), [], 'and it did not select the row');
+        });
+    }
+
+    it('still selects when the press lands on the row itself', () => {
+        const { grid, body } = makeGrid({ selection: 'multi' });
+
+        click(body, 0);
+
+        assert.deepEqual(grid.selectedKeys(), ['1']);
+    });
+
+    it('still selects when the press lands on a plain cell', () => {
+        const { grid, body } = makeGrid({ selection: 'multi' });
+        const tr = body.children[0];
+        let prevented = false;
+        tr.dispatchEvent({
+            type: 'mousedown', target: tr.children[0], button: 0,
+            preventDefault: () => { prevented = true; },
+        });
+
+        assert.equal(prevented, true, 'a press on a cell is still the table dragging a selection');
+        assert.deepEqual(grid.selectedKeys(), ['1']);
+    });
+});
