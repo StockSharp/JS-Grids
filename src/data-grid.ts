@@ -354,6 +354,13 @@ export interface GridOptions<TRow> {
      */
     renderLimit?: number;
     /**
+     * The element the table scrolls in. With it, `renderLimit` is how many rows are painted
+     * at a time rather than at most: each time the element is brought within a screen of its
+     * end, the next `renderLimit` rows are painted, so every row can be reached while a
+     * table of thousands is never painted all at once. Pages only while `renderLimit` is set.
+     */
+    scroller?: HTMLElement;
+    /**
      * Where a group sits among the others. `label` (the default) reads them
      * alphabetically, which is what a reader expects of a column of names. `rows` leaves
      * them in the order the sorted rows present them, for a table whose order carries
@@ -502,6 +509,12 @@ export class DataGrid<TRow> {
     /// The rendered filter controls, by column key, so a stored filter can be put
     /// back into them without rebuilding the row under the user's cursor.
     private _filterEls: Map<string, HTMLElement[]>;
+    // How many pages of `renderLimit` rows a paint may show: one, and one more each time
+    // the scroller nears its end. It never shrinks, so a repaint does not throw a reader
+    // halfway down back to the top.
+    private _pages: number;
+    // Whether the last paint stopped at its limit with rows still unpainted.
+    private _truncated: boolean;
     /// Suppresses onStateChange while setState applies a stored arrangement.
     private _restoring: boolean;
 
@@ -510,6 +523,7 @@ export class DataGrid<TRow> {
             if (col.exportable && !col.value && !col.exportValue)
                 throw new Error(`DataGrid: column "${col.key}" is exportable but declares no value to export`);
         }
+
 
         this.options = options;
         this._rows = [];
@@ -537,6 +551,8 @@ export class DataGrid<TRow> {
                 { numeric: true, sensitivity: 'accent' });
         this._filterEls = new Map();
         this._restoring = false;
+        this._pages = 1;
+        this._truncated = false;
 
         const accessors: Record<string, (row: TRow) => unknown> = {};
         for (const col of options.columns) {
@@ -551,6 +567,7 @@ export class DataGrid<TRow> {
         this._paint();
         if (options.contextMenu) this._bindContextMenu();
         if ((options.selection || 'none') !== 'none') this._bindCopyShortcut();
+        if (options.scroller) this._bindScroller(options.scroller);
     }
 
     /** Every declared column in display order, hidden ones included. */
@@ -1225,6 +1242,7 @@ export class DataGrid<TRow> {
 
     render(): void {
         this._paint();
+        this._fillScroller();
         if (this.options.afterRender) this.options.afterRender();
     }
 
@@ -1234,7 +1252,8 @@ export class DataGrid<TRow> {
 
         const pinned = this.options.pinnedRows ? this.options.pinnedRows() : [];
         const sorted = this.sortedRows();
-        const limit = this.options.renderLimit != null ? this.options.renderLimit : Infinity;
+        const limit = this.options.renderLimit != null ? this.options.renderLimit * this._pages : Infinity;
+        this._truncated = false;
 
         const children: Node[] = [];
         for (const row of pinned) {
@@ -1244,7 +1263,7 @@ export class DataGrid<TRow> {
         let painted = 0;
         if (this._group === null) {
             for (const row of sorted) {
-                if (painted >= limit) break;
+                if (painted >= limit) { this._truncated = true; break; }
                 children.push(this._bodyRow(row));
                 painted++;
             }
@@ -1253,13 +1272,13 @@ export class DataGrid<TRow> {
             // user picked -- sorting by quantity inside "AAPL" should not shuffle
             // "AAPL" itself against "BTC".
             for (const [key, group] of this._groups(sorted)) {
-                if (painted >= limit) break;
+                if (painted >= limit) { this._truncated = true; break; }
                 children.push(this._groupRow(key, group.label, group.rows.length));
                 if (this._collapsed.has(key)) continue;
                 for (const row of group.rows) {
                     // The limit counts rows of data: a group header is a label for the
                     // rows under it, and capping on it would cut a group off at its own title.
-                    if (painted >= limit) break;
+                    if (painted >= limit) { this._truncated = true; break; }
                     children.push(this._bodyRow(row));
                     painted++;
                 }
@@ -1286,6 +1305,35 @@ export class DataGrid<TRow> {
             const keys = this.displayRows().map(row => this.options.rowKey(row));
             if (this._flashKnown !== null || keys.length > 0) this._flashKnown = new Set(keys);
         }
+    }
+
+    private _bindScroller(scroller: HTMLElement): void {
+        const onScroll = () => {
+            if (!this._canPage(scroller)) return;
+            this._pages++;
+            this.render();
+        };
+        scroller.addEventListener('scroll', onScroll);
+        this._release.push(() => scroller.removeEventListener('scroll', onScroll));
+    }
+
+    // A page that leaves the reader nothing to scroll would hold the rest out of reach, so the
+    // next is painted at once, until the scroller holds a screen past the one in view.
+    private _fillScroller(): void {
+        const scroller = this.options.scroller;
+        while (scroller && this._canPage(scroller)) {
+            this._pages++;
+            this._paint();
+        }
+    }
+
+    // Whether the last paint left rows out while the scroller is within a screen of its end. A
+    // scroller with no height is not laid out - a panel in a hidden tab - and pages nothing.
+    private _canPage(scroller: HTMLElement): boolean {
+        return this._truncated
+            && (this.options.renderLimit ?? 0) > 0
+            && scroller.clientHeight > 0
+            && scroller.scrollTop + scroller.clientHeight * 2 >= scroller.scrollHeight;
     }
 
     /**

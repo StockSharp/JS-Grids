@@ -107,6 +107,10 @@ export class FakeElement {
     value = '';
     disabled = false;
     colSpan = 1;
+    /// The scroll metrics the grid reads off the element a table scrolls in; a test sets them.
+    scrollTop = 0;
+    scrollHeight = 0;
+    clientHeight = 0;
     readonly _listeners = new Map<string, FakeListener[]>();
 
     constructor(tagName: string) {
@@ -249,6 +253,11 @@ export class FakeElement {
         const handlers = this._listeners.get(type);
         if (handlers) handlers.push(handler);
         else this._listeners.set(type, [handler]);
+    }
+
+    removeEventListener(type: string, handler: FakeListener): void {
+        const handlers = this._listeners.get(type);
+        if (handlers) this._listeners.set(type, handlers.filter(h => h !== handler));
     }
 
     dispatchEvent(event: FakeEvent): void {

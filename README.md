@@ -93,8 +93,13 @@ two are spelled the way Bootstrap spells them, which is a coupling worth knowing
 about before adopting.
 
 `renderLimit` caps what is painted, not what is exported — which is what a
-watchlist wants: a screen-sized table over a full sheet. `afterRender()` fires
-after every repaint, including one caused by a sort click the caller never saw,
+watchlist wants: a screen-sized table over a full sheet. Pass `scroller`, the
+element the table scrolls in, and the cap becomes a page size instead: each time
+the reader scrolls within a screen of the end, the next `renderLimit` rows are
+painted, and a page too short to scroll is followed by the next at once, so every
+row stays reachable. The limit is read on every paint, so a host may change it on
+a live grid. `afterRender()` fires after every
+repaint, including one caused by a sort click or a scroll the caller never saw,
 so a host can re-subscribe to the symbols now on screen.
 
 ## What the user can do to a table

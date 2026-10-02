@@ -389,6 +389,13 @@ export interface GridOptions<TRow> {
      */
     renderLimit?: number;
     /**
+     * The element the table scrolls in. With it, `renderLimit` is how many rows are painted
+     * at a time rather than at most: each time the element is brought within a screen of its
+     * end, the next `renderLimit` rows are painted, so every row can be reached while a
+     * table of thousands is never painted all at once. Pages only while `renderLimit` is set.
+     */
+    scroller?: HTMLElement;
+    /**
      * Where a group sits among the others. `label` (the default) reads them
      * alphabetically, which is what a reader expects of a column of names. `rows` leaves
      * them in the order the sorted rows present them, for a table whose order carries
