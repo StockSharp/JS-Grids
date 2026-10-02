@@ -228,6 +228,8 @@
     var options = {
         head: document.getElementById('gridHead'),
         body: document.getElementById('gridBody'),
+        // With a limit on, the next page is painted as the table is scrolled near its end.
+        scroller: document.getElementById('tableScroll'),
         columns: COLUMNS,
         defaultSort: { col: 'id', dir: SortDirections.Desc },
         rowKey: function (o) { return String(o.id); },
@@ -475,6 +477,18 @@
     btnLimit.addEventListener('click', function () {
         options.renderLimit = options.renderLimit ? undefined : 10;
         toggle(btnLimit, !!options.renderLimit);
+        btnLimit.textContent = options.renderLimit ? T.page.limit + options.renderLimit : T.page.limitOff;
+        grid.render();
+    });
+
+    // Enough rows for a page limit to page through.
+    document.getElementById('btnMany').addEventListener('click', function () {
+        var templates = held.length > 0 ? held.slice() : orders.slice();
+        for (var i = 0; i < 1000; i++) {
+            var order = Object.assign({}, templates[i % templates.length], { id: ++nextOrderId });
+            reprice(order);
+            held.push(order);
+        }
         grid.render();
     });
 
@@ -524,6 +538,7 @@
             document.documentElement.classList.contains('light') ? page.themeDark : page.themeLight;
         document.getElementById('btnColumns').textContent = page.columns;
         document.getElementById('btnLimit').textContent = options.renderLimit ? page.limit + options.renderLimit : page.limitOff;
+        document.getElementById('btnMany').textContent = page.manyRows;
         document.getElementById('btnClear').textContent = grid.rows.length ? page.clearRows : page.restoreRows;
         document.getElementById('btnGroup').textContent = grid.groupedBy() ? page.groupOff : page.groupOn;
         document.getElementById('btnFilterRow').textContent = page.filterRow;

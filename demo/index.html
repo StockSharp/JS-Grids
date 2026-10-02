@@ -30,6 +30,7 @@ download a real <code>.xlsx</code>.</p>
       <button class="tbtn" id="btnColumns" type="button">Columns…</button>
       <button class="tbtn" id="btnLive" type="button"><span class="dot"></span>Live prices</button>
       <button class="tbtn" id="btnLimit" type="button">renderLimit = 10</button>
+      <button class="tbtn" id="btnMany" type="button">+1000 orders</button>
       <button class="tbtn" id="btnClear" type="button">Clear rows</button>
       <button class="tbtn" id="btnGroup" type="button">Group by board</button>
       <button class="tbtn" id="btnFilterRow" type="button">Filter row</button>
@@ -41,7 +42,7 @@ download a real <code>.xlsx</code>.</p>
       <button class="tbtn primary" id="btnExport" type="button">Download .xlsx</button>
     </div>
 
-    <div class="table-scroll">
+    <div class="table-scroll" id="tableScroll">
       <table class="blotter" id="blotter">
         <thead id="gridHead"></thead>
         <tbody id="gridBody"></tbody>
