@@ -149,7 +149,59 @@
                     + ' rows × ' + sheetCols + ' columns  ·  sort ' + sort;
             },
             sortDefault: 'default (id desc)',
-            sortBy: function (col, dir) { return col + ' ' + dir; }
+            sortBy: function (col, dir) { return col + ' ' + dir; },
+            loadTest: 'Load test →'
+        },
+
+        // The load page (load.html): the same dictionary, so its language button and its
+        // column headers work the way the main page's do.
+        load: {
+            title: 'ssgrid · load test',
+            headSub: '· load test',
+            back: '← Demo',
+            lede: '<b>@stocksharp/grids</b> under the rate a live tape or a quote board brings: tens to hundreds of '
+                + 'updates a second, each one handed to the grid the documented way and painted at once. The meters '
+                + 'say what that costs — frames, paints, the rows and elements the grid creates, and the share of '
+                + 'the main thread the updates take.',
+            scenario: 'Scenario',
+            tape: 'Tape',
+            inplace: 'In place',
+            rate: 'Updates / s',
+            start: 'Start',
+            stop: 'Stop',
+            meters: {
+                fps: 'Frames / s',
+                updates: 'Updates / s',
+                renders: 'Renders / s',
+                rows: 'Rows built / s',
+                elements: 'Elements created / s',
+                busy: 'Main thread',
+                heap: 'JS heap, MB'
+            },
+            howTitle: 'What is measured',
+            hints: [
+                '<b>Tape</b> — a new row arrives on top through <code>setRows()</code>; the table keeps the last 200, '
+                    + 'newest first, and <code>flashNewClass</code> marks the arrival.',
+                '<b>In place</b> — the grid holds 200 quotes; each update changes one of them and calls '
+                    + '<code>render()</code>, the documented live-update path.',
+                '<b>One paint per update</b> — the way a host that repaints on every message drives the grid: at '
+                    + '500 a second that is 500 paints a second.',
+                '<b>Rows built, elements created</b> — what the grid put into the table each second, counted by a '
+                    + '<code>MutationObserver</code> on the body.',
+                '<b>Main thread</b> — the share of each second spent inside the updates: the change itself and the '
+                    + 'grid\'s paint. The browser\'s layout and drawing come on top.',
+                '<b>Headless</b> — <code>?scenario=tape&amp;rate=200&amp;auto=1</code> starts a run; '
+                    + '<code>window.__loadReport()</code> returns the counters since <code>window.__loadReset()</code>.'
+            ],
+            columns: {
+                id: '#', time: 'Time', symbol: 'Symbol', side: 'Side', price: 'Price', qty: 'Qty',
+                bid: 'Bid', ask: 'Ask', last: 'Last', change: 'Change', volume: 'Volume'
+            },
+            empty: 'No rows',
+            status: function (scenario, rows, rate, running) {
+                return scenario + '  ·  ' + rows + ' rows  ·  ' + rate + ' updates a second'
+                    + (running ? '  ·  running' : '  ·  stopped');
+            }
         }
     };
 
@@ -280,7 +332,53 @@
                     + ' 行 × ' + sheetCols + ' 列  ·  排序 ' + sort;
             },
             sortDefault: '默认（id 降序）',
-            sortBy: function (col, dir) { return col + ' ' + (dir === 'asc' ? '升序' : '降序'); }
+            sortBy: function (col, dir) { return col + ' ' + (dir === 'asc' ? '升序' : '降序'); },
+            loadTest: '压力测试 →'
+        },
+
+        load: {
+            title: 'ssgrid · 压力测试',
+            headSub: '· 压力测试',
+            back: '← 演示',
+            lede: '<b>@stocksharp/grids</b> 承受实时成交流或报价板的更新频率：每秒数十到数百次更新，'
+                + '每次都按文档方式交给表格并立即绘制。仪表显示其代价 —— 帧数、绘制次数、表格创建的行与元素，'
+                + '以及更新占用主线程的比例。',
+            scenario: '场景',
+            tape: '成交流',
+            inplace: '原地更新',
+            rate: '每秒更新',
+            start: '开始',
+            stop: '停止',
+            meters: {
+                fps: '帧 / 秒',
+                updates: '更新 / 秒',
+                renders: '绘制 / 秒',
+                rows: '新建行 / 秒',
+                elements: '新建元素 / 秒',
+                busy: '主线程',
+                heap: 'JS 堆，MB'
+            },
+            howTitle: '测量内容',
+            hints: [
+                '<b>成交流</b> —— 新行通过 <code>setRows()</code> 出现在顶部；表格保留最近 200 行，最新在前，'
+                    + '<code>flashNewClass</code> 标记新到的行。',
+                '<b>原地更新</b> —— 表格持有 200 条报价；每次更新修改其中一条并调用 <code>render()</code>，'
+                    + '即文档中的实时更新方式。',
+                '<b>每次更新绘制一次</b> —— 与每条消息都重绘的宿主驱动表格的方式相同：每秒 500 次更新即每秒绘制 500 次。',
+                '<b>新建行、新建元素</b> —— 表格每秒放入表体的内容，由表体上的 <code>MutationObserver</code> 统计。',
+                '<b>主线程</b> —— 每秒中花在更新上的时间比例：数据变更本身与表格的绘制。浏览器的布局与绘图另计。',
+                '<b>无界面运行</b> —— <code>?scenario=tape&amp;rate=200&amp;auto=1</code> 开始一次运行；'
+                    + '<code>window.__loadReport()</code> 返回自 <code>window.__loadReset()</code> 以来的计数。'
+            ],
+            columns: {
+                id: '#', time: '时间', symbol: '代码', side: '方向', price: '价格', qty: '数量',
+                bid: '买价', ask: '卖价', last: '最新', change: '涨跌', volume: '成交量'
+            },
+            empty: '无数据',
+            status: function (scenario, rows, rate, running) {
+                return scenario + '  ·  ' + rows + ' 行  ·  每秒 ' + rate + ' 次更新'
+                    + (running ? '  ·  运行中' : '  ·  已停止');
+            }
         }
     };
 

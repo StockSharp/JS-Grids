@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+<link rel="icon" type="image/x-icon" href="./favicon.ico" />
+<title>ssgrid · load test</title>
+<link rel="stylesheet" href="./demo.css" />
+</head>
+<body>
+
+<header class="demo-header">
+  <span class="brand">ssgrid <span class="sub" id="headSub">· load test</span></span>
+  <span class="spacer"></span>
+  <a class="tbtn" id="lnkDemo" href="./index.html">← Demo</a>
+</header>
+
+<p class="lede" id="lede"></p>
+
+<main class="wrap">
+  <section class="grid-panel">
+    <div class="toolbar">
+      <button class="tbtn" id="btnLang" type="button">中文</button>
+      <button class="tbtn" id="btnTheme" type="button">☀ Light</button>
+      <span class="pill" id="scenarioLabel">Scenario</span>
+      <button class="tbtn" data-scenario="tape" type="button">Tape</button>
+      <button class="tbtn" data-scenario="inplace" type="button">In place</button>
+      <span class="pill" id="rateLabel">Updates / s</span>
+      <button class="tbtn" data-rate="10" type="button">10</button>
+      <button class="tbtn" data-rate="50" type="button">50</button>
+      <button class="tbtn" data-rate="100" type="button">100</button>
+      <button class="tbtn" data-rate="200" type="button">200</button>
+      <button class="tbtn" data-rate="500" type="button">500</button>
+      <span class="spacer"></span>
+      <button class="tbtn primary" id="btnRun" type="button">Start</button>
+    </div>
+
+    <div class="meters">
+      <div class="meter"><span class="meter-label" data-meter-label="fps"></span><span class="meter-value" data-meter="fps">–</span></div>
+      <div class="meter"><span class="meter-label" data-meter-label="updates"></span><span class="meter-value" data-meter="updates">–</span></div>
+      <div class="meter"><span class="meter-label" data-meter-label="renders"></span><span class="meter-value" data-meter="renders">–</span></div>
+      <div class="meter"><span class="meter-label" data-meter-label="rows"></span><span class="meter-value" data-meter="rows">–</span></div>
+      <div class="meter"><span class="meter-label" data-meter-label="elements"></span><span class="meter-value" data-meter="elements">–</span></div>
+      <div class="meter"><span class="meter-label" data-meter-label="busy"></span><span class="meter-value" data-meter="busy">–</span></div>
+      <div class="meter"><span class="meter-label" data-meter-label="heap"></span><span class="meter-value" data-meter="heap">–</span></div>
+    </div>
+
+    <div class="table-scroll" id="tableScroll">
+      <table class="blotter" id="blotter">
+        <thead id="gridHead"></thead>
+        <tbody id="gridBody"></tbody>
+      </table>
+    </div>
+
+    <div class="statusbar" id="status"></div>
+  </section>
+
+  <aside class="side">
+    <div class="side-block">
+      <div class="side-title" id="howTitle">What is measured</div>
+      <ul class="hint" id="hints"></ul>
+    </div>
+  </aside>
+</main>
+
+<script src="../dist/ssgrid.js"></script>
+<script src="./i18n.js"></script>
+<script src="./load.js"></script>
+</body>
+</html>

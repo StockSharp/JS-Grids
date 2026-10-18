@@ -111,7 +111,8 @@ cell whose `render()` hands over a `Node`, a cell whose column has `bindCell`, a
 row bound by `bindRow` to another object under the same key. A class or text the
 host puts on a cell or row after the paint (a flash, a patch through
 `cellElement()`) lasts until the next paint, which hands it a fresh element to
-decorate again, so an animation keyed on the class plays again.
+decorate again, so an animation keyed on the class plays again. `demo/load.html` puts the table
+under tens to hundreds of updates a second and shows what they cost.
 
 ## What the user can do to a table
 
@@ -424,7 +425,7 @@ Dedicated entry points are available for consumers with narrower needs:
 npm ci
 npm test
 npm run build
-npm run serve                       # the demo on http://localhost:8793/demo/
+npm run serve                       # the demo on http://localhost:8793/demo/, the load test on /demo/load.html
 node tools/screenshots.mjs          # what the README screenshots would be; --apply writes them
 npm run pack:check
 npm run release:patch

@@ -61,6 +61,7 @@ code { color: var(--t-accent); }
 }
 .tbtn:hover { border-color: var(--t-accent); color: var(--t-accent); }
 .tbtn.primary, .tbtn.on { background: var(--t-accent); color: #fff; border-color: var(--t-accent); }
+a.tbtn { text-decoration: none; }
 .tbtn .dot { width: 8px; height: 8px; border-radius: 50%; background: #ff3d57; opacity: .4; }
 .tbtn.on .dot { opacity: 1; animation: pulse 1s ease-in-out infinite; background: #fff; }
 @keyframes pulse { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.5); opacity: .35; } }
@@ -76,6 +77,18 @@ code { color: var(--t-accent); }
     border-bottom: 1px solid var(--t-border); background: var(--t-header);
 }
 .table-scroll { flex: 1; min-height: 0; overflow: auto; }
+
+/* The load page's meters: what the updates cost, refreshed every second. */
+.meters {
+    display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 12px; flex: none;
+    border-bottom: 1px solid var(--t-border); background: var(--t-panel);
+}
+.meter {
+    display: flex; flex-direction: column; gap: 2px; min-width: 120px; padding: 6px 10px;
+    border: 1px solid var(--t-border); border-radius: 6px;
+}
+.meter-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--t-text-dim); white-space: nowrap; }
+.meter-value { font-size: 16px; font-weight: 600; color: var(--t-text-bright); font-variant-numeric: tabular-nums; }
 .statusbar {
     flex: none; padding: 7px 12px; border-top: 1px solid var(--t-border);
     background: var(--t-header); color: var(--t-text-dim); font-size: 11.5px;

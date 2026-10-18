@@ -532,6 +532,7 @@
         document.documentElement.lang = T.htmlLang;
         document.title = page.title;
         document.getElementById('headScript').innerHTML = page.headScript;
+        document.getElementById('lnkLoad').textContent = page.loadTest;
         document.getElementById('lede').innerHTML = page.lede;
         document.getElementById('btnLang').textContent = T.switchTo;
         document.getElementById('btnTheme').textContent =
