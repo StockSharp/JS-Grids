@@ -589,6 +589,12 @@ export declare class DataGrid<TRow> {
      */
     displayRows(): TRow[];
     setRows(rows: TRow[]): void;
+    /**
+     * Repaint from the rows held. In a browser the paint waits for the next frame, so the updates one frame
+     * brings paint once, and a hidden tab, which gets no frames, paints nothing until it is shown again.
+     * Without a frame clock (a test process) it paints at once. `rowElement` and `cellElement` paint what is
+     * pending before they read.
+     */
     render(): void;
     /**
      * The rendered row with this key, or null when it is not on screen (filtered

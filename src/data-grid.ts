@@ -493,6 +493,17 @@ interface BuiltRow<TRow> {
     tds: Map<string, HTMLTableCellElement>;
 }
 
+// The frames a page paints in: once per screen refresh, none in a hidden tab. Null where there is no window
+// with a frame clock -- a node test, a server render -- and a grid there paints at once.
+function frameClock(): { request(paint: () => void): number; cancel(handle: number): void } | null {
+    const view = typeof window === 'undefined' ? undefined : window;
+    if (!view || typeof view.requestAnimationFrame !== 'function') return null;
+    return {
+        request: paint => view.requestAnimationFrame(paint),
+        cancel: handle => view.cancelAnimationFrame(handle),
+    };
+}
+
 export class DataGrid<TRow> {
     readonly options: GridOptions<TRow>;
     readonly sort: TableSort<TRow>;
@@ -545,6 +556,8 @@ export class DataGrid<TRow> {
     private _pages: number;
     // Whether the last paint stopped at its limit with rows still unpainted.
     private _truncated: boolean;
+    // The frame a repaint waits for, null when none is pending.
+    private _frame: number | null;
     /// Suppresses onStateChange while setState applies a stored arrangement.
     private _restoring: boolean;
 
@@ -584,6 +597,7 @@ export class DataGrid<TRow> {
         this._restoring = false;
         this._pages = 1;
         this._truncated = false;
+        this._frame = null;
 
         const accessors: Record<string, (row: TRow) => unknown> = {};
         for (const col of options.columns) {
@@ -1076,6 +1090,10 @@ export class DataGrid<TRow> {
      * on answering Ctrl+C from beyond the grave.
      */
     destroy(): void {
+        if (this._frame !== null) {
+            frameClock()?.cancel(this._frame);
+            this._frame = null;
+        }
         for (const release of this._release.splice(0)) release();
         this._menu?.close();
         this._filterDialog?.close();
@@ -1271,10 +1289,38 @@ export class DataGrid<TRow> {
         this._refreshFilterRow();
     }
 
+    /**
+     * Repaint from the rows held. In a browser the paint waits for the next frame, so the updates one frame
+     * brings paint once, and a hidden tab, which gets no frames, paints nothing until it is shown again.
+     * Without a frame clock (a test process) it paints at once. `rowElement` and `cellElement` paint what is
+     * pending before they read.
+     */
     render(): void {
+        const frames = frameClock();
+        if (frames === null) {
+            this._paintNow();
+            return;
+        }
+        if (this._frame !== null) return;
+        this._frame = frames.request(() => {
+            this._frame = null;
+            this._paintNow();
+        });
+    }
+
+    // The paint render() asks for: the rows, the pages a short screen still wants, and the host's hook.
+    private _paintNow(): void {
         this._paint();
         this._fillScroller();
         if (this.options.afterRender) this.options.afterRender();
+    }
+
+    // A caller reading the table reads the rows it handed over: what waits for a frame is painted now.
+    private _flush(): void {
+        if (this._frame === null) return;
+        frameClock()?.cancel(this._frame);
+        this._frame = null;
+        this._paintNow();
     }
 
     private _paint(): void {
@@ -1379,6 +1425,7 @@ export class DataGrid<TRow> {
      * out, or past `renderLimit`).
      */
     rowElement(rowKey: string): HTMLTableRowElement | null {
+        this._flush();
         return this._rowEls.get(rowKey) || null;
     }
 
@@ -1387,6 +1434,7 @@ export class DataGrid<TRow> {
      * instead of repainting the table, and how it finds the cell to edit.
      */
     cellElement(rowKey: string, columnKey: string): HTMLTableCellElement | null {
+        this._flush();
         return this._cellEls.get(rowKey)?.get(columnKey) || null;
     }
 

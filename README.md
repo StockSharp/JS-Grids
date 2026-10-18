@@ -102,6 +102,14 @@ a live grid. `afterRender()` fires after every
 repaint, including one caused by a sort click or a scroll the caller never saw,
 so a host can re-subscribe to the symbols now on screen.
 
+A repaint waits for the next frame. In a browser `setRows()` and `render()` take the rows
+at once and paint them on the next `requestAnimationFrame`, so a feed that hands the grid
+a hundred updates a second costs one paint a frame, and a tab in the background, which
+the browser gives no frames, paints nothing until it is shown again. `rowElement()` and
+`cellElement()` paint what is pending before they answer, so a caller reading a row
+reads the rows it handed over. Without a frame clock (a node process) the paint is
+immediate.
+
 A repaint changes what changed. A row on screen keeps its `<tr>` while its key, its
 class and its cells read the same; a cell whose text or class moved is built anew in
 it, and a row that arrives or leaves is put in or taken out, so a tape that repaints

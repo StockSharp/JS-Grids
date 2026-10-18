@@ -356,11 +356,45 @@ export const fakeDocument = {
     clipboard: '',
 };
 
-export const fakeWindow = {
+export const fakeWindow: {
+    innerWidth: number;
+    innerHeight: number;
+    addEventListener: (type: string, handler: FakeListener) => void;
+    removeEventListener: (type: string, handler: FakeListener) => void;
+    requestAnimationFrame?: (paint: () => void) => number;
+    cancelAnimationFrame?: (handle: number) => void;
+} = {
     innerWidth: 1024,
     innerHeight: 768,
     addEventListener: (type: string, handler: FakeListener): void => bind(windowListeners, type, handler),
     removeEventListener: (type: string, handler: FakeListener): void => unbind(windowListeners, type, handler),
+};
+
+const pendingFrames = new Map<number, () => void>();
+let nextFrame = 1;
+
+/// The frames a page paints in. A browser runs them once per screen refresh, and not at all in a hidden tab;
+/// here a test runs them when it says so. Not installed by default: a window without one paints at once.
+export const frameClock = {
+    install(): void {
+        fakeWindow.requestAnimationFrame = (paint: () => void): number => {
+            const handle = nextFrame++;
+            pendingFrames.set(handle, paint);
+            return handle;
+        };
+        fakeWindow.cancelAnimationFrame = (handle: number): void => { pendingFrames.delete(handle); };
+    },
+    uninstall(): void {
+        delete fakeWindow.requestAnimationFrame;
+        delete fakeWindow.cancelAnimationFrame;
+        pendingFrames.clear();
+    },
+    /// The next frame: everything asked for until now is painted, once.
+    run(): void {
+        const due = [...pendingFrames.values()];
+        pendingFrames.clear();
+        for (const paint of due) paint();
+    },
 };
 
 /// Fire what the page would fire: a click somewhere else, an Escape, a scroll.

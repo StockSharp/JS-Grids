@@ -30,6 +30,12 @@ string, so it can never be an injection site. Everything it *shows* is the host'
   `ColumnSettingsDialog`). Nothing here may reach for `window`, `location`,
   storage or a modal library — the unit tests run in a node process where none of
   those exist, which is what keeps the rule honest.
+- **The frame clock is the grid's own.** A repaint waits for
+  `window.requestAnimationFrame`, so whoever feeds the grid hands rows over and
+  never paces it: the updates of one frame paint once, and a hidden tab, which
+  gets no frames, paints nothing. Where `window` has no frame clock (the node
+  tests) it paints at once; a test that needs frames installs `frameClock` from
+  `tests/fake-dom.ts` and runs them itself.
 
 ## The DOM in the tests is a fake, deliberately
 `tests/fake-dom.ts` implements the slice of DOM the library touches, and its size
