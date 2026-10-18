@@ -102,6 +102,17 @@ a live grid. `afterRender()` fires after every
 repaint, including one caused by a sort click or a scroll the caller never saw,
 so a host can re-subscribe to the symbols now on screen.
 
+A repaint changes what changed. A row on screen keeps its `<tr>` while its key, its
+class and its cells read the same; a cell whose text or class moved is built anew in
+it, and a row that arrives or leaves is put in or taken out, so a tape that repaints
+on every print adds one row a print rather than rebuilding the table. Three things
+are built anew on every paint because the grid cannot tell whether they changed: a
+cell whose `render()` hands over a `Node`, a cell whose column has `bindCell`, and a
+row bound by `bindRow` to another object under the same key. A class or text the
+host puts on a cell or row after the paint (a flash, a patch through
+`cellElement()`) lasts until the next paint, which hands it a fresh element to
+decorate again, so an animation keyed on the class plays again.
+
 ## What the user can do to a table
 
 Everything below is off unless the declaration asks for it, and the arrangement it
@@ -138,7 +149,7 @@ does not name**, so a stored layout cannot hide a column added later. And
 on every page load.
 
 Selection is held by **row key**, not by index or element — which is what makes it
-survive a repaint that rebuilds every `<tr>`, and a filter that takes a row off
+survive a repaint that builds a row anew, and a filter that takes a row off
 screen and later brings it back. It is **not** part of `getState()`: a stored view
 is how a table is arranged, and which rows were highlighted when somebody closed
 the tab is not that. Persist it separately if you want it back — `onSelectionChange`

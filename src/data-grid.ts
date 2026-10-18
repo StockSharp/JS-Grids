@@ -465,6 +465,33 @@ function isControl(event: { target?: unknown }): boolean {
     return CONTROL_TAGS.includes(String(target.tagName ?? '').toUpperCase());
 }
 
+// What a cell shows: its class, and either its text or the element its renderer handed over.
+interface CellOutput {
+    className: string;
+    node: Node | null;
+    text: string | null;
+}
+
+// A cell as the grid built it. `text` is null for content it cannot compare: an element,
+// or a cell its column binds.
+interface BuiltCell {
+    td: HTMLTableCellElement;
+    className: string;
+    text: string | null;
+}
+
+// A body row as the grid built it. `ownClass` is the class the grid gave it; `className` is
+// what the element read after the grid and the host's bindRow were done with it, so a row
+// decorated later reads otherwise.
+interface BuiltRow<TRow> {
+    tr: HTMLTableRowElement;
+    row: TRow;
+    layout: string;
+    ownClass: string;
+    className: string;
+    cells: Map<string, BuiltCell>;
+    tds: Map<string, HTMLTableCellElement>;
+}
 
 export class DataGrid<TRow> {
     readonly options: GridOptions<TRow>;
@@ -472,6 +499,9 @@ export class DataGrid<TRow> {
     private _rows: TRow[];
     private _rowEls: Map<string, HTMLTableRowElement>;
     private _cellEls: Map<string, Map<string, HTMLTableCellElement>>;
+    // The body rows on screen by key, with what each was built from, so the next paint
+    // can keep every row and cell that still reads the same.
+    private _built: Map<string, BuiltRow<TRow>>;
     /// Display order of every declared column, hidden ones included -- hiding must
     /// not lose the slot a column goes back to.
     private _order: string[];
@@ -529,6 +559,7 @@ export class DataGrid<TRow> {
         this._rows = [];
         this._rowEls = new Map();
         this._cellEls = new Map();
+        this._built = new Map();
         this._order = options.columns.map(col => col.key);
         this._hidden = new Set();
         this._dragKey = null;
@@ -1255,6 +1286,13 @@ export class DataGrid<TRow> {
         const limit = this.options.renderLimit != null ? this.options.renderLimit * this._pages : Infinity;
         this._truncated = false;
 
+        // What the paint before built, by key: a row this paint takes is kept or patched,
+        // and whatever it leaves behind goes with the old map.
+        const built = this._built;
+        this._built = new Map();
+        const columns = this.visibleColumns();
+        const layout = columns.map(col => col.key).join('\u0000');
+
         const children: Node[] = [];
         for (const row of pinned) {
             if (row.place === GridPinnedPlacements.Top) children.push(this._pinnedRow(row));
@@ -1264,7 +1302,7 @@ export class DataGrid<TRow> {
         if (this._group === null) {
             for (const row of sorted) {
                 if (painted >= limit) { this._truncated = true; break; }
-                children.push(this._bodyRow(row));
+                children.push(this._bodyRow(row, built, columns, layout));
                 painted++;
             }
         } else {
@@ -1279,7 +1317,7 @@ export class DataGrid<TRow> {
                     // The limit counts rows of data: a group header is a label for the
                     // rows under it, and capping on it would cut a group off at its own title.
                     if (painted >= limit) { this._truncated = true; break; }
-                    children.push(this._bodyRow(row));
+                    children.push(this._bodyRow(row, built, columns, layout));
                     painted++;
                 }
             }
@@ -1293,7 +1331,7 @@ export class DataGrid<TRow> {
             if (row.place === GridPinnedPlacements.Bottom) children.push(this._pinnedRow(row));
         }
 
-        this.options.body.replaceChildren(...children);
+        this._placeRows(children);
 
         // What this paint showed becomes the baseline the next one flashes
         // against. Display keys rather than painted ones: a row past
@@ -1563,43 +1601,113 @@ export class DataGrid<TRow> {
         }
     }
 
-    private _bodyRow(row: TRow): HTMLTableRowElement {
-        const tr = document.createElement('tr') as HTMLTableRowElement;
+    // A row that reads as it did keeps its element; a cell whose text or class moved is built
+    // anew in it; a row laid out for other columns, decorated by the host since, or bound by
+    // the host to another object is built anew whole.
+    private _bodyRow(row: TRow, built: Map<string, BuiltRow<TRow>>, columns: GridColumn<TRow>[], layout: string): HTMLTableRowElement {
         const key = this.options.rowKey(row);
+        const className = this._bodyRowClass(row, key);
+
+        // Taken once: a second row under the same key is built on its own.
+        const prior = built.get(key);
+        if (prior) built.delete(key);
+
+        const bound = !!this.options.bindRow;
+        const kept = prior !== undefined
+            && prior.layout === layout
+            && prior.tr.className === prior.className
+            && (!bound || (prior.row === row && prior.ownClass === className));
+
+        const entry = kept ? this._patchRow(prior!, row, className, columns) : this._buildRow(row, key, className, columns, layout);
+        if (!this._built.has(key)) this._built.set(key, entry);
+        this._rowEls.set(key, entry.tr);
+        this._cellEls.set(key, entry.tds);
+        return entry.tr;
+    }
+
+    // The row's own class, the selection's and the flash's, in that order.
+    private _bodyRowClass(row: TRow, key: string): string {
+        const classes: string[] = [];
         const rowClass = this.options.rowClass ? this.options.rowClass(row) : '';
-        if (rowClass) tr.className = rowClass;
+        if (rowClass) classes.push(rowClass);
+        if (this._selected.has(key)) classes.push(this.options.selectedClass || 'is-selected');
+        // News since the previous paint. The check runs against the set as it was BEFORE
+        // this paint started -- `_paint` replaces it only after every row is built.
+        if (this.options.flashNewClass && this._flashKnown !== null && !this._flashKnown.has(key)) classes.push(this.options.flashNewClass);
+        return classes.join(' ');
+    }
+
+    private _patchRow(entry: BuiltRow<TRow>, row: TRow, className: string, columns: GridColumn<TRow>[]): BuiltRow<TRow> {
+        for (const col of columns) {
+            const cell = entry.cells.get(col.key)!;
+            const output = DataGrid._cellOutput(col, row);
+            if (DataGrid._reads(cell, col, output)) continue;
+
+            const fresh = this._buildCell(col, row, output);
+            entry.tr.replaceChild(fresh.td, cell.td);
+            entry.cells.set(col.key, fresh);
+            entry.tds.set(col.key, fresh.td);
+        }
+
+        if (entry.ownClass !== className) {
+            entry.tr.className = className;
+            entry.ownClass = className;
+            entry.className = entry.tr.className;
+        }
+        entry.row = row;
+        return entry;
+    }
+
+    // Whether a cell built before still shows what its column reads now, as the grid left it.
+    private static _reads<TRow>(cell: BuiltCell, col: GridColumn<TRow>, output: CellOutput): boolean {
+        return cell.text !== null
+            && !col.bindCell
+            && output.text !== null
+            && output.className === cell.className
+            && output.text === cell.text
+            // A class or text that reads otherwise was set by the host after the paint.
+            && cell.td.className === cell.className
+            && cell.td.textContent === cell.text;
+    }
+
+    private static _cellOutput<TRow>(col: GridColumn<TRow>, row: TRow): CellOutput {
+        const className = col.cellClass ? col.cellClass(row) : '';
+        const content = col.render ? col.render(row) : DataGrid._text(col.value ? col.value(row) : null);
+        // A renderer is declared to return a string or a Node, but a value that fell
+        // through a formatter's branches arrives as whatever it was - a raw status
+        // number, say. Passing that to appendChild throws and takes the whole table
+        // down over one unexpected row, so anything that is not a Node is rendered as
+        // text. nodeType rather than instanceof Node: the tests run against a fake DOM
+        // with no Node constructor in scope.
+        return content !== null && typeof content === 'object' && 'nodeType' in content
+            ? { className, node: content as Node, text: null }
+            : { className, node: null, text: DataGrid._text(content) };
+    }
+
+    private _buildCell(col: GridColumn<TRow>, row: TRow, output: CellOutput): BuiltCell {
+        const td = document.createElement('td') as HTMLTableCellElement;
+        td.dataset.col = col.key;
+        if (output.className) td.className = output.className;
+        if (output.node !== null) td.appendChild(output.node);
+        else td.textContent = output.text!;
+        if (col.bindCell) col.bindCell(td, row);
+        return { td, className: td.className, text: output.node === null ? output.text : null };
+    }
+
+    private _buildRow(row: TRow, key: string, className: string, columns: GridColumn<TRow>[], layout: string): BuiltRow<TRow> {
+        const tr = document.createElement('tr') as HTMLTableRowElement;
+        if (className) tr.className = className;
         tr.dataset.rowKey = key;
 
-        const cells = new Map<string, HTMLTableCellElement>();
-        for (const col of this.visibleColumns()) {
-            const td = document.createElement('td') as HTMLTableCellElement;
-            td.dataset.col = col.key;
-            const cellClass = col.cellClass ? col.cellClass(row) : '';
-            if (cellClass) td.className = cellClass;
-            const content = col.render ? col.render(row) : DataGrid._text(col.value ? col.value(row) : null);
-            // A renderer is declared to return a string or a Node, but a value that
-            // fell through a formatter's branches arrives as whatever it was - a raw
-            // status number, say. Passing that to appendChild throws and takes the
-            // whole table down over one unexpected row, so anything that is not a Node
-            // is rendered as text. nodeType rather than instanceof Node: the tests run
-            // against a fake DOM with no Node constructor in scope.
-            if (content !== null && typeof content === 'object' && 'nodeType' in content) td.appendChild(content);
-            else td.textContent = DataGrid._text(content);
-            if (col.bindCell) col.bindCell(td, row);
-            tr.appendChild(td);
-            cells.set(col.key, td);
+        const cells = new Map<string, BuiltCell>();
+        const tds = new Map<string, HTMLTableCellElement>();
+        for (const col of columns) {
+            const cell = this._buildCell(col, row, DataGrid._cellOutput(col, row));
+            tr.appendChild(cell.td);
+            cells.set(col.key, cell);
+            tds.set(col.key, cell.td);
         }
 
-        if (this._selected.has(key)) {
-            const selectedClass = this.options.selectedClass || 'is-selected';
-            tr.className = tr.className ? `${tr.className} ${selectedClass}` : selectedClass;
-        }
-        // News since the previous paint. The check runs against the set as it
-        // was BEFORE this paint started — `_paint` replaces it only after every
-        // row is built.
-        if (this.options.flashNewClass && this._flashKnown !== null && !this._flashKnown.has(key)) {
-            tr.className = tr.className ? `${tr.className} ${this.options.flashNewClass}` : this.options.flashNewClass;
-        }
         const mode = this.options.selection || 'none';
         if (mode !== 'none') {
             // Selection happens on mousedown, not on click, for two reasons that are
@@ -1637,9 +1745,18 @@ export class DataGrid<TRow> {
         }
 
         if (this.options.bindRow) this.options.bindRow(tr, row);
-        this._rowEls.set(key, tr);
-        this._cellEls.set(key, cells);
-        return tr;
+        return { tr, row, layout, ownClass: className, className: tr.className, cells, tds };
+    }
+
+    // Puts the rows of this paint into the body in order, moving the ones already there and
+    // taking out the rest: a row that stayed is neither built again nor put back.
+    private _placeRows(rows: Node[]): void {
+        const body = this.options.body;
+        for (let i = 0; i < rows.length; i++) {
+            const at = body.children[i];
+            if (at !== rows[i]) body.insertBefore(rows[i], at ?? null);
+        }
+        while (body.children.length > rows.length) body.removeChild(body.children[rows.length]);
     }
 
     private _pinnedRow(pinned: GridPinnedRow): HTMLTableRowElement {

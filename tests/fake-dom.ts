@@ -217,6 +217,27 @@ export class FakeElement {
         return node;
     }
 
+    /// A repaint moves the rows that stayed into their new order instead of building them again.
+    insertBefore<T extends FakeNode>(node: T, reference: FakeNode | null): T {
+        node.parentNode?._remove(node);
+        node.parentNode = this;
+        const at = reference ? this.childNodes.indexOf(reference) : -1;
+        if (at < 0) this.childNodes.push(node);
+        else this.childNodes.splice(at, 0, node);
+        return node;
+    }
+
+    /// A cell that reads otherwise is swapped for a new one in the row it belongs to.
+    replaceChild<T extends FakeNode>(node: T, old: FakeNode): T {
+        node.parentNode?._remove(node);
+        const at = this.childNodes.indexOf(old);
+        if (at < 0) throw new Error('replaceChild: the node to replace is not a child');
+        this.childNodes[at] = node;
+        node.parentNode = this;
+        old.parentNode = null;
+        return node;
+    }
+
     replaceChildren(...nodes: FakeNode[]): void {
         this.childNodes = [];
         for (const node of nodes) this.appendChild(node);
